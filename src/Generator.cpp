@@ -1,5 +1,6 @@
 #include "Generator.h"
 #include "Output.h"
+#include "Util.h"
 
 namespace {
 
@@ -175,22 +176,39 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
         emit_options.extensions[ext_pair[0]] = ext_pair[1];
     }
 
+    auto target_string = generator_args["target"];
     if (!runtime_name.empty()) {
         compile_standalone_runtime(output_dir + "/" + runtime_name,
-                                   parse_target_string(generator_args["target"]));
+                                   parse_target_string(target_string));
         if (generator_name.empty()) {
             // We're just compiling a runtime
             return 0;
         }
     }
 
-    std::unique_ptr<GeneratorBase> gen = GeneratorRegistry::create(generator_name, generator_args);
-    if (gen == nullptr) {
-        cerr << "Unknown generator: " << generator_name << "\n";
-        cerr << kUsage;
-        return 1;
+    auto target_strings = split_string(target_string, ",");
+    if (target_strings.size() == 1) {
+        auto gen = GeneratorRegistry::create(generator_name, generator_args);
+        if (gen == nullptr) {
+            cerr << "Unknown generator: " << generator_name << "\n";
+            cerr << kUsage;
+            return 1;
+        }
+        gen->emit_filter(output_dir, function_name, file_base_name, emit_options);
+        return 0;
+    } else {
+        for (auto sub_target_string : target_strings) {
+            auto sub_generator_args = generator_args;
+            sub_generator_args["target"] = sub_target_string;
+            auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
+            if (gen == nullptr) {
+                cerr << "Unknown generator: " << generator_name << "\n";
+                cerr << kUsage;
+                return 1;
+            }
+            gen->emit_filter(output_dir, function_name, file_base_name, emit_options);
+        }
     }
-    gen->emit_filter(output_dir, function_name, file_base_name, emit_options);
     return 0;
 }
 

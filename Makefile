@@ -496,6 +496,7 @@ RUNTIME_CPP_COMPONENTS = \
   android_io \
   android_opengl_context \
   cache \
+  can_use_target \
   cuda \
   destructors \
   device_interface \

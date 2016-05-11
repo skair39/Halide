@@ -1682,6 +1682,11 @@ void Func::compile_to_object(const string &filename, const vector<Argument> &arg
     pipeline().compile_to_object(filename, args, "", target);
 }
 
+void Func::compile_to_multitarget_object(const string &filename, const vector<Argument> &args, const string &fn_name,
+                             const std::vector<Target> &targets) {
+    pipeline().compile_to_multitarget_object(filename, args, fn_name, targets);
+}
+
 void Func::compile_to_header(const string &filename, const vector<Argument> &args,
                              const string &fn_name, const Target &target) {
     pipeline().compile_to_header(filename, args, fn_name, target);

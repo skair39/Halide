@@ -2612,6 +2612,76 @@ void CodeGen_LLVM::visit(const Call *op) {
             f->setCallingConv(CallingConv::C);
         }
         register_destructor(f, codegen(arg), Always);
+    } else if (op->is_intrinsic(Call::call_cached_indirect_function)) {
+        // Arguments to call_cached_indirect_function are of the form
+        //    cond_1, "function_name_1", 
+        //    cond_2, "function_name_2",
+        //    ...
+        //    cond_N, "function_name_N"
+        // TODO(srj) finish comment
+        //
+        internal_assert(op->args.size() >= 4);
+        internal_assert(!(op->args.size() & 1));
+        const StringImm *base_fn_name = op->args.back().as<StringImm>();
+        internal_assert(base_fn_name);
+        llvm::Function *base_fn = module->getFunction(base_fn_name->value);
+        internal_assert(base_fn) << "Missing base function: (" << base_fn_name->value << ")\n";
+        llvm::GlobalValue *base_fn_ptr = module->getNamedValue(base_fn_name->value);
+        internal_assert(base_fn_ptr) << "Missing base global: (" << base_fn_name->value << ")\n";
+
+        // Create a null-initialized global to track this object.
+        // (Assume / require that all functions have types that match
+        // base_fn->getType())
+        const string global_name = unique_name(base_fn_name->value + "_indirect_fn_ptr");
+        GlobalVariable *global = new GlobalVariable(
+            *module, 
+            base_fn_ptr->getType(),
+            /* isConstant*/ false, 
+            GlobalValue::PrivateLinkage,
+            ConstantPointerNull::get(base_fn_ptr->getType()),
+            global_name);
+        LoadInst *loaded_value = builder->CreateLoad(global);
+
+        BasicBlock *global_inited_bb = BasicBlock::Create(*context, "global_inited_bb", function);
+        BasicBlock *global_not_inited_bb = BasicBlock::Create(*context, "global_not_inited_bb", function);
+        BasicBlock *call_fn_bb = BasicBlock::Create(*context, "call_fn_bb", function);
+
+        // Only init the global if not already inited
+        builder->CreateCondBr(builder->CreateIsNotNull(loaded_value), global_inited_bb, global_not_inited_bb, very_likely_branch);
+
+        // Build the not-already-inited case
+        builder->SetInsertPoint(global_not_inited_bb);
+        llvm::Value *selected_value = nullptr;
+        for (int i = op->args.size() - 2; i >= 0; i -= 2) {
+            Expr sub_fn_expr = op->args[i];
+            const StringImm *sub_fn_name = op->args[i+1].as<StringImm>();
+            llvm::GlobalValue *sub_fn_ptr = module->getNamedValue(sub_fn_name->value);
+            internal_assert(sub_fn_ptr) << "Missing sub global: (" << sub_fn_name->value << ")\n";
+            if (!selected_value) {
+                selected_value = sub_fn_ptr;
+            } else {
+                selected_value = builder->CreateSelect(codegen(sub_fn_expr), sub_fn_ptr, selected_value);
+            }
+        }
+        builder->CreateStore(selected_value, global);
+        builder->CreateBr(call_fn_bb);
+
+        // Just an incoming edge for the Phi node
+        builder->SetInsertPoint(global_inited_bb);
+        builder->CreateBr(call_fn_bb);
+
+        builder->SetInsertPoint(call_fn_bb);
+        PHINode *phi = builder->CreatePHI(base_fn_ptr->getType(), 2);
+        phi->addIncoming(selected_value, global_not_inited_bb);
+        phi->addIncoming(loaded_value, global_inited_bb);
+
+        std::vector<llvm::Value *> call_args;
+        for (auto &arg : function->args()) {
+             call_args.push_back(&arg);
+        }
+
+        llvm::CallInst *call = builder->CreateCall(base_fn->getFunctionType(), phi, call_args);
+        value = call;
     } else if (op->call_type == Call::Intrinsic ||
                op->call_type == Call::PureIntrinsic) {
         internal_error << "Unknown intrinsic: " << op->name << "\n";

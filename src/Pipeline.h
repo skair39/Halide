@@ -112,9 +112,20 @@ public:
      * the same name as this halide function. You probably don't want to
      * use this directly; call compile_to_file instead. */
     EXPORT void compile_to_object(const std::string &filename,
-                                  const std::vector<Argument> &,
+                                  const std::vector<Argument> &args,
                                   const std::string &fn_name,
                                   const Target &target = get_target_from_environment());
+
+    /** Statically compile a pipeline with multiple output functions to an
+     * object file, with the given filename (which should probably end in
+     * .o or .obj), type signature, and C function name (which defaults to
+     * the same name as this halide function)
+     TODO(srj)
+     */
+    EXPORT void compile_to_multitarget_object(const std::string &filename,
+                                  const std::vector<Argument> &args,
+                                  const std::string &fn_name,
+                                  const std::vector<Target> &targets);
 
     /** Emit a header file with the given filename for a pipeline. The
      * header will define a function with the type signature given by

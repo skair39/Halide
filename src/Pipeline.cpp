@@ -179,6 +179,91 @@ void Pipeline::compile_to_object(const string &filename,
     compile_module_to_object(compile_to_module(args, fn_name, target), filename);
 }
 
+void Pipeline::compile_to_multitarget_object(const string &filename,
+                                             const vector<Argument> &args,
+                                             const string &fn_name,
+                                             const std::vector<Target> &targets) {
+    user_assert(!fn_name.empty()) << "Function name must be specified.\n";
+    user_assert(!targets.empty()) << "Must specify at least one target.\n";
+    const Target &base_target = targets.back();
+    user_assert(!base_target.has_feature(Target::JIT)) << "JIT not allowed for compile_to_multitarget_object.\n";
+    if (targets.size() == 1) {
+        compile_to_object(filename, args, fn_name, base_target);
+        return;
+    }
+
+    std::vector<Module> modules;
+    if (!base_target.has_feature(Target::NoRuntime)) {
+        Module empty(fn_name + "_runtime", base_target.without_feature(Target::NoRuntime));
+        modules.push_back(empty);
+    }
+
+    std::vector<Expr> wrapper_args;
+    for (const Target &target : targets) {
+        if (target.os != base_target.os ||
+            target.arch != base_target.arch ||
+            target.bits != base_target.bits) {
+            user_error << "All Targets must have matching arch-bits-os for compile_to_multitarget_object.\n";
+            return;
+        }
+        if (target.has_feature(Target::NoRuntime) != base_target.has_feature(Target::NoRuntime)) {
+            user_error << "All Targets must have matching NoRuntime feature for compile_to_multitarget_object.\n";
+            return;
+        }
+        if (target.has_feature(Target::UserContext) != base_target.has_feature(Target::UserContext)) {
+            user_error << "All Targets must have matching UserContext feature for compile_to_multitarget_object.\n";
+            return;
+        }
+        if (target.has_feature(Target::JIT) != base_target.has_feature(Target::JIT)) {
+            user_error << "All Targets must have matching JIT feature for compile_to_multitarget_object.\n";
+            return;
+        }
+        auto sub_fn_name = fn_name + "_" + replace_all(target.to_string(), "-", "_");
+        // Note that we use Internal linkage here.
+        modules.emplace_back(compile_to_module(args, sub_fn_name, target.with_feature(Target::NoRuntime), LoweredFunc::Internal));
+
+        static_assert(sizeof(uint64_t)*8 >= Target::FeatureEnd, "Features will not fit in uint64_t");
+        uint64_t feature_bits = 0;
+        for (int i = 0; i < Target::FeatureEnd; ++i) {
+            if (target.has_feature(static_cast<Target::Feature>(i))) {
+                feature_bits |= static_cast<uint64_t>(1) << i;
+            }
+        }
+
+        Expr can_use = target != base_target ?
+            Call::make(Int(32), "halide_can_use_target_features", {UIntImm::make(UInt(64), feature_bits)}, Call::Extern) :
+            IntImm::make(Int(32), 1);
+
+        wrapper_args.push_back(can_use != 0);
+        wrapper_args.push_back(sub_fn_name);
+    }
+
+    Expr indirect_result = Call::make(Int(32), Call::call_cached_indirect_function, wrapper_args, Call::Intrinsic);
+
+    string private_result_name = unique_name(fn_name + "_result");
+    Expr private_result_var = Variable::make(Int(32), private_result_name);
+    Stmt wrapper_body = AssertStmt::make(private_result_var == 0, private_result_var);
+    wrapper_body = LetStmt::make(private_result_name, indirect_result, wrapper_body);
+
+    // We don't use link_modules() here because it sets the Module target
+    // to the first item in the list; we specifically want base_target.
+    // (Also, it checks for incompatible Targets, which we've already checked
+    // to our satisfaction.)
+    Module multi_module(fn_name, base_target);
+    for (const Module &input : modules) {
+        for (const auto &b : input.buffers()) {
+            multi_module.append(b);
+        }
+        for (const auto &f : input.functions()) {
+            multi_module.append(f);
+        }
+    }
+    // wrapper_body must come last
+    vector<Argument> public_args = build_public_args(args, base_target);
+    multi_module.append(LoweredFunc(fn_name, public_args, wrapper_body, LoweredFunc::External));
+    compile_module_to_outputs(multi_module, Outputs().object(filename).assembly(filename + ".s"));
+}
+
 void Pipeline::compile_to_header(const string &filename,
                                  const vector<Argument> &args,
                                  const string &fn_name,

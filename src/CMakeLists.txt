@@ -24,6 +24,7 @@ set(RUNTIME_CPP
   android_io
   android_opengl_context
   cache
+  can_use_target
   cuda
   destructors
   device_interface
