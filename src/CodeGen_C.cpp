@@ -1552,7 +1552,7 @@ void CodeGen_C::test() {
     s = Allocate::make("tmp.heap", Int(32), {43, beta}, const_true(), s);
 
     Module m("", get_host_target());
-    m.append(LoweredFunc("test1", args, s, LoweredFunc::External));
+    m.appendf(LoweredFunc("test1", args, s, LoweredFunc::External));
 
     ostringstream source;
     {

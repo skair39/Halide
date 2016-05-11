@@ -186,27 +186,23 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
     }
 
     auto target_strings = split_string(target_string, ",");
-    if (target_strings.size() == 1) {
-        auto gen = GeneratorRegistry::create(generator_name, generator_args);
+    for (auto sub_target_string : target_strings) {
+        auto sub_generator_args = generator_args;
+        sub_generator_args["target"] = sub_target_string;
+        auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
         if (gen == nullptr) {
             cerr << "Unknown generator: " << generator_name << "\n";
             cerr << kUsage;
             return 1;
         }
         gen->emit_filter(output_dir, function_name, file_base_name, emit_options);
-        return 0;
-    } else {
-        for (auto sub_target_string : target_strings) {
-            auto sub_generator_args = generator_args;
-            sub_generator_args["target"] = sub_target_string;
-            auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
-            if (gen == nullptr) {
-                cerr << "Unknown generator: " << generator_name << "\n";
-                cerr << kUsage;
-                return 1;
-            }
-            gen->emit_filter(output_dir, function_name, file_base_name, emit_options);
-        }
+#if 0
+    Module m = build_multitarget_module(fn_name, targets, 
+        [this, args](const std::string &name, const Target &target) -> Module {
+            return compile_to_module(args, name, target, LoweredFunc::Internal);
+        });
+    m.compile(Outputs().object(filename).assembly(filename + ".s"));
+#endif
     }
     return 0;
 }

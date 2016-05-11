@@ -68,7 +68,7 @@ public:
     /** Add a declaration to this module. */
     // @{
     EXPORT void append(const Buffer &buffer);
-    EXPORT void append(const Internal::LoweredFunc &function);
+    EXPORT void appendf(const Internal::LoweredFunc &function);
     // @}
 
     /** Compile a halide Module to variety of outputs, depending on 
@@ -83,6 +83,9 @@ EXPORT Module link_modules(const std::string &name, const std::vector<Module> &m
  * target. For use with Target::NoRuntime. */
 EXPORT void compile_standalone_runtime(std::string object_filename, Target t);
 
+EXPORT Module build_multitarget_module(const std::string &fn_name, 
+                                const std::vector<Target> &targets, 
+                                std::function<Module(const std::string &, const Target &)> module_producer);
 }
 
 #endif

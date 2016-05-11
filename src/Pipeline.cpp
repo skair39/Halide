@@ -1,6 +1,7 @@
+#include "Pipeline.h"
+
 #include <algorithm>
 
-#include "Pipeline.h"
 #include "Argument.h"
 #include "Func.h"
 #include "IRVisitor.h"
@@ -190,11 +191,17 @@ void Pipeline::compile_to_object(const string &filename,
     const char* ext = target.os == Target::Windows && !target.has_feature(Target::MinGW) ? ".obj" : ".o";
     m.compile(Outputs().object(output_name(filename, m, ext)));
 }
-
 void Pipeline::compile_to_multitarget_object(const string &filename,
                                              const vector<Argument> &args,
                                              const string &fn_name,
                                              const std::vector<Target> &targets) {
+#if 1
+    Module m = build_multitarget_module(fn_name, targets, 
+        [this, args](const std::string &name, const Target &target) -> Module {
+            return compile_to_module(args, name, target, LoweredFunc::Internal);
+        });
+    m.compile(Outputs().object(filename).assembly(filename + ".s"));
+#else
     user_assert(!fn_name.empty()) << "Function name must be specified.\n";
     user_assert(!targets.empty()) << "Must specify at least one target.\n";
     const Target &base_target = targets.back();
@@ -218,17 +225,19 @@ void Pipeline::compile_to_multitarget_object(const string &filename,
             user_error << "All Targets must have matching arch-bits-os for compile_to_multitarget_object.\n";
             return;
         }
-        if (target.has_feature(Target::NoRuntime) != base_target.has_feature(Target::NoRuntime)) {
-            user_error << "All Targets must have matching NoRuntime feature for compile_to_multitarget_object.\n";
-            return;
-        }
-        if (target.has_feature(Target::UserContext) != base_target.has_feature(Target::UserContext)) {
-            user_error << "All Targets must have matching UserContext feature for compile_to_multitarget_object.\n";
-            return;
-        }
-        if (target.has_feature(Target::JIT) != base_target.has_feature(Target::JIT)) {
-            user_error << "All Targets must have matching JIT feature for compile_to_multitarget_object.\n";
-            return;
+        // Some Features must match across all targets.
+        static const std::array<Target::Feature, 5> must_match_features = {{
+            Target::CPlusPlusMangling,
+            Target::JIT,
+            Target::NoRuntime,
+            Target::RegisterMetadata,
+            Target::UserContext,
+        }};
+        for (auto f : must_match_features) {
+            if (target.has_feature(f) != base_target.has_feature(f)) {
+                user_error << "All Targets must have feature " << f << " set identically for compile_to_multitarget_object.\n";
+                break;
+            }
         }
         auto sub_fn_name = fn_name + "_" + replace_all(target.to_string(), "-", "_");
         // Note that we use Internal linkage here.
@@ -267,13 +276,14 @@ void Pipeline::compile_to_multitarget_object(const string &filename,
             multi_module.append(b);
         }
         for (const auto &f : input.functions()) {
-            multi_module.append(f);
+            multi_module.appendf(f);
         }
     }
     // wrapper_body must come last
-    vector<Argument> public_args = build_public_args(args, base_target);
-    multi_module.append(LoweredFunc(fn_name, public_args, wrapper_body, LoweredFunc::External));
+    vector<Argument> public_args = modules.back().functions().back().args;//build_public_args(args, base_target);
+    multi_module.appendf(LoweredFunc(fn_name, public_args, wrapper_body, LoweredFunc::External));
     multi_module.compile(Outputs().object(filename).assembly(filename + ".s"));
+#endif
 }
 
 void Pipeline::compile_to_header(const string &filename,
@@ -638,7 +648,7 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
                                         buf.type(), buf.dimensions()));
     }
 
-    module.append(LoweredFunc(private_name, private_args,
+    module.appendf(LoweredFunc(private_name, private_args,
                               private_body, LoweredFunc::Internal));
 
     // Generate a call to the private function, adding an arguments
@@ -657,7 +667,7 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
     Stmt public_body = AssertStmt::make(private_result_var == 0, private_result_var);
     public_body = LetStmt::make(private_result_name, call_private, public_body);
 
-    module.append(LoweredFunc(new_fn_name, public_args, public_body, linkage_type));
+    module.appendf(LoweredFunc(new_fn_name, public_args, public_body, linkage_type));
 
     contents->module = module;
 
