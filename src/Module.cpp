@@ -153,7 +153,7 @@ void compile_standalone_runtime(std::string object_filename, Target t) {
 
 Module build_multitarget_module(const std::string &fn_name, 
                                 const std::vector<Target> &targets, 
-                                std::function<Module(const std::string &, const Target &)> module_producer) {
+                                std::function<Module(const std::string &, const Target &, LoweredFunc::LinkageType)> module_producer) {
     user_assert(!fn_name.empty()) << "Function name must be specified.\n";
     user_assert(!targets.empty()) << "Must specify at least one target.\n";
 
@@ -163,7 +163,7 @@ Module build_multitarget_module(const std::string &fn_name,
     const Target &base_target = targets.back();
     user_assert(!base_target.has_feature(Target::JIT)) << "JIT not allowed for compile_to_multitarget_object.\n";
     if (targets.size() == 1) {
-        return module_producer(fn_name, base_target);
+        return module_producer(fn_name, base_target, LoweredFunc::External);
     }
 
     std::vector<Module> modules;
@@ -176,9 +176,10 @@ Module build_multitarget_module(const std::string &fn_name,
             break;
         }
         // Some features must match across all targets.
-        static const std::array<Target::Feature, 5> must_match_features = {{
+        static const std::array<Target::Feature, 6> must_match_features = {{
             Target::CPlusPlusMangling,
             Target::JIT,
+            Target::Matlab,
             Target::NoRuntime,
             Target::RegisterMetadata,
             Target::UserContext,
@@ -190,7 +191,7 @@ Module build_multitarget_module(const std::string &fn_name,
             }
         }
         auto sub_fn_name = fn_name + "_" + replace_all(target.to_string(), "-", "_");
-        auto sub_module = module_producer(sub_fn_name, target.with_feature(Target::NoRuntime));
+        auto sub_module = module_producer(sub_fn_name, target.with_feature(Target::NoRuntime), LoweredFunc::Internal);
         modules.push_back(sub_module);
 
         static_assert(sizeof(uint64_t)*8 >= Target::FeatureEnd, "Features will not fit in uint64_t");

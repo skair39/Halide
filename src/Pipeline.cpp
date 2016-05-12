@@ -197,8 +197,8 @@ void Pipeline::compile_to_multitarget_object(const string &filename,
                                              const std::vector<Target> &targets) {
 #if 1
     Module m = build_multitarget_module(fn_name, targets, 
-        [this, args](const std::string &name, const Target &target) -> Module {
-            return compile_to_module(args, name, target, LoweredFunc::Internal);
+        [this, &args](const std::string &name, const Target &target, LoweredFunc::LinkageType linkage_type) -> Module {
+            return compile_to_module(args, name, target, linkage_type);
         });
     m.compile(Outputs().object(filename).assembly(filename + ".s"));
 #else

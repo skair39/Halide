@@ -85,7 +85,7 @@ EXPORT void compile_standalone_runtime(std::string object_filename, Target t);
 
 EXPORT Module build_multitarget_module(const std::string &fn_name, 
                                 const std::vector<Target> &targets, 
-                                std::function<Module(const std::string &, const Target &)> module_producer);
+                                std::function<Module(const std::string &, const Target &, Internal::LoweredFunc::LinkageType)> module_producer);
 }
 
 #endif

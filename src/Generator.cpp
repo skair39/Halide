@@ -29,6 +29,15 @@ bool is_valid_name(const std::string& n) {
     return true;
 }
 
+std::string compute_base_path(const std::string &output_dir,
+                              const std::string &function_name,
+                              const std::string &file_base_name) {
+    std::vector<std::string> namespaces;
+    std::string simple_name = extract_namespaces(function_name, namespaces);
+    std::string base_path = output_dir + "/" + (file_base_name.empty() ? simple_name : file_base_name);
+    return base_path;
+}
+
 std::string get_extension(const std::string& def, const GeneratorBase::EmitOptions &options) {
     auto it = options.extensions.find(def);
     if (it != options.extensions.end()) {
@@ -38,8 +47,8 @@ std::string get_extension(const std::string& def, const GeneratorBase::EmitOptio
 }
 
 void compile_module_to_filter(const Module &m,
-                 const std::string &base_path,
-                 const GeneratorBase::EmitOptions &options) {
+                              const std::string &base_path,
+                              const GeneratorBase::EmitOptions &options) {
     Outputs output_files;
     if (options.emit_o) {
         // If the target arch is pnacl, then the output "object" file is
@@ -235,6 +244,7 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
     }
 
     auto target_strings = split_string(target_string, ",");
+#if 0
     for (auto sub_target_string : target_strings) {
         auto sub_generator_args = generator_args;
         sub_generator_args["target"] = sub_target_string;
@@ -245,14 +255,35 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
             return 1;
         }
         gen->emit_filter(output_dir, function_name, file_base_name, emit_options);
-#if 0
-    Module m = build_multitarget_module(fn_name, targets, 
-        [this, args](const std::string &name, const Target &target) -> Module {
-            return compile_to_module(args, name, target, LoweredFunc::Internal);
-        });
-    m.compile(Outputs().object(filename).assembly(filename + ".s"));
-#endif
     }
+#else
+    std::vector<Target> targets;
+    for (const auto &s : target_strings) {
+        Target t;
+        if (!t.from_string(s)) {
+            cerr << "Unknown target string: " << s << "\n";
+            return 1;
+        }
+        targets.push_back(t);
+    }
+
+    Module m = build_multitarget_module(function_name, targets, 
+        [&generator_name, &generator_args, &cerr, &kUsage]
+        (const std::string &name, const Target &target, LoweredFunc::LinkageType linkage_type) -> Module {
+            auto sub_generator_args = generator_args;
+            sub_generator_args["target"] = target.to_string();
+            // Must re-create each time since each instance will have a different Target
+            auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
+            if (gen == nullptr) {
+                cerr << "Unknown generator: " << generator_name << "\n";
+                cerr << kUsage;
+                exit(1);
+            }
+            return gen->build_module(name, linkage_type);
+        });
+    std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
+    compile_module_to_filter(m, base_path, emit_options);
+#endif
     return 0;
 }
 
@@ -400,21 +431,20 @@ std::vector<Argument> GeneratorBase::get_filter_output_types() {
     return output_types;
 }
 
-Module GeneratorBase::build_module(const std::string &function_name) {
+Module GeneratorBase::build_module(const std::string &function_name,
+                                   const LoweredFunc::LinkageType linkage_type) {
     build_params();
     Pipeline pipeline = build_pipeline();
     // Building the pipeline may mutate the params and imageparams.
     rebuild_params();
-    return pipeline.compile_to_module(get_filter_arguments(), function_name, target);
+    return pipeline.compile_to_module(get_filter_arguments(), function_name, target, linkage_type);
 }
 
 void GeneratorBase::emit_filter(const std::string &output_dir,
                                 const std::string &function_name,
                                 const std::string &file_base_name,
                                 const EmitOptions &options) {
-    std::vector<std::string> namespaces;
-    std::string simple_name = extract_namespaces(function_name, namespaces);
-    std::string base_path = output_dir + "/" + (file_base_name.empty() ? simple_name : file_base_name);
+    std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
     compile_module_to_filter(build_module(function_name), base_path, options);
 }
 
