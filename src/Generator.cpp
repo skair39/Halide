@@ -233,7 +233,7 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
         emit_options.extensions[ext_pair[0]] = ext_pair[1];
     }
 
-    auto target_string = generator_args["target"];
+    const auto target_string = generator_args["target"];
     if (!runtime_name.empty()) {
         compile_standalone_runtime(output_dir + "/" + runtime_name,
                                    parse_target_string(target_string));

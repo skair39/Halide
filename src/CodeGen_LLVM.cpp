@@ -806,8 +806,7 @@ llvm::Function *CodeGen_LLVM::add_argv_wrapper(const std::string &name) {
     }
     debug(4) << "Creating call from wrapper to actual function\n";
     llvm::CallInst *result = builder->CreateCall(function, wrapper_args);
-    // This call should always be a tail call, and should never inline
-    result->setTailCallKind(llvm::CallInst::TCK_MustTail);
+    // This call should never inline
     result->setIsNoInline();
     builder->CreateRet(result);
     llvm::verifyFunction(*wrapper);
