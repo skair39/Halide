@@ -175,8 +175,11 @@ void create_static_library(const std::vector<std::string> &src_files, const Targ
     // support it.)
     std::string command = "ar qsv " + dst_file;
     for (auto &src : src_files) {
+        internal_assert(Internal::file_exists(src)) << "ar input file does not exist:" << src << "\n";
         command += " " + src;
     }
+    system("echo ar is: `which ar`");
+    std::cerr << "CMDLINE IS:(" << command << ")\n";
     int result = system(command.c_str());
     internal_assert(result == 0) << "shelling out to ar failed.\n";
 #endif
