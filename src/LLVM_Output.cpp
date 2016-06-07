@@ -4,6 +4,7 @@
 #include "CodeGen_LLVM.h"
 #include "CodeGen_C.h"
 #include "CodeGen_Internal.h"
+#include "Util.h"
 
 #include <iostream>
 #include <fstream>
