@@ -180,7 +180,7 @@ void create_static_library(const std::vector<std::string> &src_files, const Targ
         command += " " + src;
     }
     system("echo ar is: `which ar`");
-    std::cerr << "CMDLINE IS:(" << command << ")\n";
+    std::cerr << "CMDLINE IS:(" + command + ")\n";
     int result = system(command.c_str());
     internal_assert(result == 0) << "shelling out to ar failed.\n";
 #endif
