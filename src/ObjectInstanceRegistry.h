@@ -26,7 +26,7 @@ public:
         Generator,
         GeneratorParam,
         GeneratorInput,
-        // GeneratorOutput,
+        GeneratorOutput,
         FilterParam
     };
 

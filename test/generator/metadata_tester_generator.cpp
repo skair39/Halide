@@ -7,9 +7,10 @@ enum class SomeEnum { Foo,
 
 class MetadataTester : public Halide::Generator<MetadataTester> {
 public:
-    GeneratorParam<Type> input_type{ "input_type", UInt(16) };  // deliberately wrong value, must be overridden to UInt(8)
-    GeneratorParam<int> input_dim{ "input_dim", 2 };            // deliberately wrong value, must be overridden to 3
-    GeneratorParam<Type> output_type{ "output_type", Float(32) };
+    GeneratorParam<Type> input_type{ "input_type", Int(16) };       // deliberately wrong value, must be overridden to UInt(8)
+    GeneratorParam<int> input_dim{ "input_dim", 2 };                // deliberately wrong value, must be overridden to 3
+    GeneratorParam<Type> output_type{ "output_type", Int(16) };     // deliberately wrong value, must be overridden to Float(32)
+    GeneratorParam<int> output_dim{ "output_dim", 2 };              // deliberately wrong value, must be overridden to 3 
 
     Input<Func> input{ "input", input_type, input_dim };
     Input<bool> b{ "b", true };
@@ -25,16 +26,18 @@ public:
     Input<double> f64{ "f64", 64.25f, -6400.25f, 6400.25f };
     Input<void *> h{ "h", nullptr };
 
-    Func build() {
+    Output<Func> output{ "output", {output_type, Float(32)}, output_dim };
+    Output<float> output_scalar{ "output_scalar" };
+
+    void generate() {
         Var x, y, c;
 
         Func f1, f2;
         f1(x, y, c) = cast(output_type, input(x, y, c));
         f2(x, y, c) = cast<float>(f1(x, y, c) + 1);
 
-        Func output("output");
         output(x, y, c) = Tuple(f1(x, y, c), f2(x, y, c));
-        return output;
+        output_scalar() = 1234.25f;
     }
 };
 

@@ -1,3 +1,5 @@
+#include <set>
+
 #include "Generator.h"
 #include "Outputs.h"
 
@@ -369,6 +371,7 @@ GeneratorBase::~GeneratorBase() { ObjectInstanceRegistry::unregister_instance(th
 void GeneratorBase::rebuild_params() {
     params_built = false;
     filter_inputs.clear();
+    filter_outputs.clear();
     filter_params.clear();
     generator_params.clear();
     build_params();
@@ -376,6 +379,7 @@ void GeneratorBase::rebuild_params() {
 
 void GeneratorBase::build_params() {
     if (!params_built) {
+        std::set<std::string> names;
         std::vector<void *> vf = ObjectInstanceRegistry::instances_in_range(
             this, size, ObjectInstanceRegistry::FilterParam);
         for (auto v : vf) {
@@ -383,9 +387,8 @@ void GeneratorBase::build_params() {
             internal_assert(param != nullptr);
             user_assert(param->is_explicit_name()) << "Params in Generators must have explicit names: " << param->name();
             user_assert(is_valid_name(param->name())) << "Invalid Param name: " << param->name();
-            for (auto p : filter_params) {
-                user_assert(p->name() != param->name()) << "Duplicate Param name: " << param->name();
-            }
+            user_assert(!names.count(param->name())) << "Duplicate Param name: " << param->name();
+            names.insert(param->name());
             filter_params.push_back(param);
         }
 
@@ -395,14 +398,33 @@ void GeneratorBase::build_params() {
             auto input = static_cast<Internal::GeneratorInputBase *>(v);
             internal_assert(input != nullptr);
             user_assert(is_valid_name(input->name())) << "Invalid Input name: (" << input->name() << ")\n";
-            for (auto i : filter_inputs) {
-                user_assert(i->name() != input->name()) << "Duplicate Input name: (" << input->name() << ")\n";
-            }
+            user_assert(!names.count(input->name())) << "Duplicate Input name: " << input->name();
+            names.insert(input->name());
             filter_inputs.push_back(input);
+        }
+
+        std::vector<void *> vo = ObjectInstanceRegistry::instances_in_range(
+            this, size, ObjectInstanceRegistry::GeneratorOutput);
+        for (auto v : vo) {
+            auto output = static_cast<Internal::GeneratorOutputBase *>(v);
+            internal_assert(output != nullptr);
+            user_assert(is_valid_name(output->name())) << "Invalid Output name: (" << output->name() << ")\n";
+            user_assert(!names.count(output->name())) << "Duplicate Output name: " << output->name();
+            names.insert(output->name());
+            filter_outputs.push_back(output);
         }
 
         if (filter_params.size() > 0 && filter_inputs.size() > 0) {
             user_error << "Input<> may not be used with Param<> or ImageParam in Generators.\n";
+        }
+
+        if (filter_params.size() > 0 && filter_outputs.size() > 0) {
+            user_error << "Output<> may not be used with Param<> or ImageParam in Generators.\n";
+        }
+
+        if (filter_inputs.size() > 0 && filter_outputs.size() == 0) {
+            // This doesn't catch *every* possibility (since a Generator can have zero Inputs).
+            user_error << "Output<> must be used with Input<> in Generators.\n";
         }
 
         std::vector<void *> vg = ObjectInstanceRegistry::instances_in_range(
@@ -421,7 +443,7 @@ void GeneratorBase::build_params() {
 
 std::vector<Argument> GeneratorBase::get_filter_arguments() {
     build_params();
-    init_inputs();  // TODO(srj): not sure if we need this, unlikely we do
+    init_inputs_and_outputs();  // TODO(srj): not sure if we need this, unlikely we do
     std::vector<Argument> arguments;
     for (auto param : filter_params) {
         arguments.push_back(to_argument(*param));
@@ -454,10 +476,46 @@ void GeneratorBase::set_generator_param_values(const GeneratorParamValues &param
     }
 }
 
-void GeneratorBase::init_inputs() {
+void GeneratorBase::init_inputs_and_outputs() {
     for (auto input : filter_inputs) {
         input->init_internals();
     }
+    for (auto output : filter_outputs) {
+        output->init_internals();
+    }
+}
+
+void GeneratorBase::pre_build() {
+    user_assert(filter_inputs.size() == 0) << "May not use build() method with Input<>.";
+    user_assert(filter_outputs.size() == 0) << "May not use build() method with Output<>.";
+}
+
+void GeneratorBase::pre_generate() {
+    user_assert(filter_params.size() == 0) << "May not use generate() method with Param<> or ImageParam.";
+    user_assert(filter_outputs.size() > 0) << "Must use Output<> with generate() method.";
+    init_inputs_and_outputs();
+}
+
+Pipeline GeneratorBase::post_generate() {
+    std::vector<Func> funcs;
+    for (auto output : filter_outputs) {
+        user_assert(output->func.defined()) << "Output \"" << output->func.name() << "\" was not defined.\n";
+        user_assert(output->func.dimensions() == output->dimensions()) << "Output \"" << output->func.name() 
+            << "\" requires dimensions=" << output->dimensions() 
+            << " but was defined as dimensions=" << output->func.dimensions() << ".\n";
+        user_assert((int)output->func.outputs() == (int)output->types().size()) << "Output \"" << output->func.name() 
+                << "\" requires a Tuple of size " << output->types().size() 
+                << " but was defined as Tuple of size " << output->func.outputs() << ".\n";
+        for (size_t i = 0; i < output->func.output_types().size(); ++i) {
+            Type expected = output->types()[i];
+            Type actual = output->func.output_types()[i];
+            user_assert(expected == actual) << "Output \"" << output->func.name() 
+                << "\" requires type " << expected 
+                << " but was defined as type " << actual << ".\n";
+        }
+        funcs.push_back(output->func);
+    }
+    return Pipeline(funcs);
 }
 
 std::vector<Argument> GeneratorBase::get_filter_output_types() {
@@ -492,8 +550,9 @@ void GeneratorBase::emit_filter(const std::string &output_dir,
     compile_module_to_filter(build_module(function_name), base_path, options);
 }
 
-GeneratorInputBase::GeneratorInputBase(const std::string &n, Type t, Kind kind, int dimensions) 
-    : parameter(t, /*is_buffer*/ kind == Function, dimensions, n, /*is_explicit_name*/ true, /*register_instance*/ false) {
+GeneratorInputBase::GeneratorInputBase(const std::string &n, Kind kind, const TypeArg &t, const DimensionArg &d) 
+    : parameter(t.value, /*is_buffer*/ kind == Function, d.value, n, /*is_explicit_name*/ true, /*register_instance*/ false), 
+      type_param(t.param), dimension_param(d.param) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput,
                                               this, nullptr);
 }
@@ -524,6 +583,32 @@ void GeneratorInputBase::init_internals() {
        expr = Internal::Variable::make(type(), name(), parameter);
        func = Func();
     }
+}
+
+GeneratorOutputBase::GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d) 
+    : name_(n), types_(t.size()), dimensions_(d.value), type_params_(t.size()), dimension_param_(d.param) {
+    for (size_t i = 0; i < t.size(); ++i) {
+        types_[i] = t[i].value;
+        type_params_[i] = t[i].param;
+    }
+    ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorOutput,
+                                              this, nullptr);
+}
+
+GeneratorOutputBase::~GeneratorOutputBase() { 
+    ObjectInstanceRegistry::unregister_instance(this); 
+}
+
+void GeneratorOutputBase::init_internals() {
+    for (size_t i = 0; i < type_params_.size(); ++i) {
+        if (type_params_[i]) {
+            types_[i] = *type_params_[i];
+        }
+    }
+    if (dimension_param_) {
+        dimensions_ = *dimension_param_;
+    }
+    func = Func(name());
 }
 
 void generator_test() {

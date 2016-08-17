@@ -507,13 +507,24 @@ decltype(!(T)0) operator!(const GeneratorParam<T> &a) { return !(T)a; }
 
 namespace Internal {
 
+template<typename T>
+struct ArgWithParam {
+    T value;
+    const GeneratorParam<T> *param{nullptr};
+
+    // *not* explicit ctors
+    ArgWithParam(const GeneratorParam<T> &param) : value(param), param(&param) {}
+    ArgWithParam(const T &value) : value(value), param(nullptr) {}
+};
+
 class GeneratorInputBase {
 protected:
     enum Kind { Scalar, Function };
+    using TypeArg = Internal::ArgWithParam<Type>;
+    using DimensionArg = Internal::ArgWithParam<int>;
 
 public:
-    /** Construct an Input of type T with the given name and kind. */
-    GeneratorInputBase(const std::string &n, Type t, Kind kind, int dimensions);
+    GeneratorInputBase(const std::string &n, Kind kind, const TypeArg &t, const DimensionArg &d);
     ~GeneratorInputBase();
 
     std::string name() const { return parameter.name(); }
@@ -526,8 +537,8 @@ protected:
     Internal::Parameter parameter;
     Expr expr;
     Func func;
-    const GeneratorParam<Type> *type_param{nullptr};
-    const GeneratorParam<int> *dimension_param{nullptr};
+    const GeneratorParam<Type> * const type_param{nullptr};
+    const GeneratorParam<int> * const dimension_param{nullptr};
 
     void init_internals();
 
@@ -560,7 +571,7 @@ public:
      * and default/min/max values. */
     template <typename T2 = T, typename if_arithmetic<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def, const T &min, const T &max)
-        : GeneratorInputBase(n, type_of<T>(), GeneratorInputBase::Scalar, 0) {
+        : GeneratorInputBase(n, GeneratorInputBase::Scalar, type_of<T>(), 0) {
         parameter.set_min_value(Expr(min));
         parameter.set_max_value(Expr(max));
         parameter.set_scalar<T>(def);
@@ -570,7 +581,7 @@ public:
      * and default value. */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def)
-        : GeneratorInputBase(n, type_of<T>(), GeneratorInputBase::Scalar, 0) {
+        : GeneratorInputBase(n, GeneratorInputBase::Scalar, type_of<T>(), 0) {
         parameter.set_scalar<T>(def);
     }
 
@@ -598,33 +609,8 @@ public:
 
     /** Construct a Func Input the given name, type, and dimension. */
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    GeneratorInput(const std::string &n, const Type &t, int dimensions)
-        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
-    }
-
-    /** Construct a Func Input the given name and dimension, with Type specified
-     * by a GeneratorParam. */
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    GeneratorInput(const std::string &n, const GeneratorParam<Type> &t, int dimensions)
-        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
-        type_param = &t;
-    }
-
-    /** Construct a Func Input the given name and type, with dimension specified
-     * by a GeneratorParam. */
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    GeneratorInput(const std::string &n, const Type &t, const GeneratorParam<int> &dimensions)
-        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
-        dimension_param = &dimensions;
-    }
-
-    /** Construct a Func Input the given name, with type and dimension specified
-     * by a GeneratorParam. */
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    GeneratorInput(const std::string &n, const GeneratorParam<Type> &t, const GeneratorParam<int> &dimensions)
-        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
-        type_param = &t;
-        dimension_param = &dimensions;
+    GeneratorInput(const std::string &n, const TypeArg &t, const DimensionArg &d)
+        : GeneratorInputBase(n, GeneratorInputBase::Function, t, d) {
     }
 
     template <typename... Args,
@@ -641,6 +627,95 @@ private:
     void operator=(const GeneratorInput &) = delete;
 };
 
+namespace Internal {
+
+class GeneratorOutputBase {
+protected:
+    using TypeArg = Internal::ArgWithParam<Type>;
+    using DimensionArg = Internal::ArgWithParam<int>;
+public:
+    /** Construct an Output of type T with the given name and kind. */
+    GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d);
+    ~GeneratorOutputBase();
+
+    std::string name() const { return name_; }
+    const std::vector<Type> & types() const { return types_; }
+    int dimensions() const { return dimensions_; }
+
+protected:
+    friend class GeneratorBase;
+
+    const std::string name_;
+    std::vector<Type> types_;
+    int dimensions_;
+    Func func;
+    std::vector<const GeneratorParam<Type> *> type_params_;
+    const GeneratorParam<int> * const dimension_param_{nullptr};
+
+    void init_internals();
+
+private:
+    explicit GeneratorOutputBase(const GeneratorOutputBase &) = delete;
+    void operator=(const GeneratorOutputBase &) = delete;
+};
+
+}  // namespace Internal
+
+template<typename T>
+class GeneratorOutput : public Internal::GeneratorOutputBase {
+private:
+    // A little syntactic sugar for terser SFINAE.
+
+    // "scalar" outputs are syntactic sugar on 0-dimensional Funcs, 
+    // so pointer types (aka "handles") are explicitly disallowed.
+    template<typename T2>
+    struct if_scalar : std::enable_if<
+        std::integral_constant<
+            bool,
+            std::is_arithmetic<T2>::value &&
+            !std::is_pointer<T2>::value
+         >::value
+    > {};
+
+    template<typename T2>
+    struct if_func : std::enable_if<std::is_same<T2, Halide::Func>::value> {};
+
+public:
+    /** Construct a "scalar" Output of type T with the given name. */
+    // @{
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    explicit GeneratorOutput(const std::string &n) 
+        : GeneratorOutputBase(n, {type_of<T>()}, 0) {
+    }
+
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    explicit GeneratorOutput(const char *n) 
+        : GeneratorOutput(std::string(n)) {}
+    // @}
+
+    /** Construct an Output with the given name, type, and dimension. */
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    GeneratorOutput(const std::string &n, const TypeArg &t, const DimensionArg &d)
+        : GeneratorOutputBase(n, {t}, d) {
+    }
+
+    /** Construct an Output with the given name, types (Tuple), and dimension. */
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    GeneratorOutput(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d)
+        : GeneratorOutputBase(n, t, d) {
+    }
+
+    template <typename... Args>
+    FuncRef operator()(Args&&... args) const {
+        return func(std::forward<Args>(args)...);
+    }
+
+    operator class Func() const { return func; }
+
+private:
+    explicit GeneratorOutput(const GeneratorOutput &) = delete;
+    void operator=(const GeneratorOutput &) = delete;
+};
 
 class NamesInterface {
     // Names in this class are only intended for use in derived classes.
@@ -734,11 +809,17 @@ public:
 protected:
     EXPORT GeneratorBase(size_t size, const void *introspection_helper);
 
-    EXPORT void init_inputs();
     EXPORT virtual Pipeline build_pipeline() = 0;
+
+    EXPORT void pre_build();
+    EXPORT void pre_generate();
+    EXPORT Pipeline post_generate();
 
     template<typename T>
     using Input = GeneratorInput<T>;
+
+    template<typename T>
+    using Output = GeneratorOutput<T>;
 
 private:
     const size_t size;
@@ -748,6 +829,7 @@ private:
     // without considering that.
     std::vector<Internal::Parameter *> filter_params;
     std::vector<Internal::GeneratorInputBase *> filter_inputs;
+    std::vector<Internal::GeneratorOutputBase *> filter_outputs;
     std::map<std::string, Internal::GeneratorParamBase *> generator_params;
     bool params_built;
 
@@ -755,6 +837,7 @@ private:
 
     EXPORT void build_params();
     EXPORT void rebuild_params();
+    EXPORT void init_inputs_and_outputs();
 
     // Provide private, unimplemented, wrong-result-type methods here
     // so that Generators don't attempt to call the global methods
@@ -806,10 +889,27 @@ public:
     Generator() :
         Internal::GeneratorBase(sizeof(T),
                                 Internal::Introspection::get_introspection_helper<T>()) {}
+private:
+    template <typename T2 = T,
+              typename std::enable_if<std::is_member_function_pointer<decltype(&T2::build)>::value>::type * = nullptr>
+    Pipeline build_pipeline_impl() {
+        pre_build();
+        return ((T *)this)->build();
+    }
+
+    template <typename T2 = T,
+              typename std::enable_if<std::is_member_function_pointer<decltype(&T2::generate)>::value>::type * = nullptr>
+    Pipeline build_pipeline_impl() {
+        typedef typename std::result_of<decltype(&T::generate)(T)>::type RetType;
+        static_assert(std::is_void<RetType>::value, "generate() must return void");
+        pre_generate();
+        ((T *)this)->generate();
+        return post_generate();
+    }
+
 protected:
     Pipeline build_pipeline() override {
-        init_inputs();
-        return ((T *)this)->build();
+        return build_pipeline_impl();
     }
 
 private:
