@@ -102,6 +102,18 @@ void compile_module_to_filter(const Module &m,
     m.compile(output_files);
 }
 
+Argument to_argument(const Internal::Parameter &param) {
+    Expr def, min, max;
+    if (!param.is_buffer()) {
+        def = param.get_scalar_expr();
+        min = param.get_min_value();
+        max = param.get_max_value();
+    }
+    return Argument(param.name(),
+        param.is_buffer() ? Argument::InputBuffer : Argument::InputScalar,
+        param.type(), param.dimensions(), def, min, max);
+}
+
 }  // namespace
 
 const std::map<std::string, Halide::Type> &get_halide_type_enum_map() {
@@ -356,7 +368,8 @@ GeneratorBase::~GeneratorBase() { ObjectInstanceRegistry::unregister_instance(th
 
 void GeneratorBase::rebuild_params() {
     params_built = false;
-    filter_arguments.clear();
+    filter_inputs.clear();
+    filter_params.clear();
     generator_params.clear();
     build_params();
 }
@@ -365,29 +378,37 @@ void GeneratorBase::build_params() {
     if (!params_built) {
         std::vector<void *> vf = ObjectInstanceRegistry::instances_in_range(
             this, size, ObjectInstanceRegistry::FilterParam);
-        for (size_t i = 0; i < vf.size(); ++i) {
-            Parameter *param = static_cast<Parameter *>(vf[i]);
+        for (auto v : vf) {
+            auto param = static_cast<Parameter *>(v);
             internal_assert(param != nullptr);
             user_assert(param->is_explicit_name()) << "Params in Generators must have explicit names: " << param->name();
             user_assert(is_valid_name(param->name())) << "Invalid Param name: " << param->name();
-            for (const Argument& arg : filter_arguments) {
-                user_assert(arg.name != param->name()) << "Duplicate Param name: " << param->name();
+            for (auto p : filter_params) {
+                user_assert(p->name() != param->name()) << "Duplicate Param name: " << param->name();
             }
-            Expr def, min, max;
-            if (!param->is_buffer()) {
-                def = param->get_scalar_expr();
-                min = param->get_min_value();
-                max = param->get_max_value();
+            filter_params.push_back(param);
+        }
+
+        std::vector<void *> vi = ObjectInstanceRegistry::instances_in_range(
+            this, size, ObjectInstanceRegistry::GeneratorInput);
+        for (auto v : vi) {
+            auto input = static_cast<Internal::GeneratorInputBase *>(v);
+            internal_assert(input != nullptr);
+            user_assert(is_valid_name(input->name())) << "Invalid Input name: (" << input->name() << ")\n";
+            for (auto i : filter_inputs) {
+                user_assert(i->name() != input->name()) << "Duplicate Input name: (" << input->name() << ")\n";
             }
-            filter_arguments.push_back(Argument(param->name(),
-                param->is_buffer() ? Argument::InputBuffer : Argument::InputScalar,
-                param->type(), param->dimensions(), def, min, max));
+            filter_inputs.push_back(input);
+        }
+
+        if (filter_params.size() > 0 && filter_inputs.size() > 0) {
+            user_error << "Input<> may not be used with Param<> or ImageParam in Generators.\n";
         }
 
         std::vector<void *> vg = ObjectInstanceRegistry::instances_in_range(
             this, size, ObjectInstanceRegistry::GeneratorParam);
-        for (size_t i = 0; i < vg.size(); ++i) {
-            GeneratorParamBase *param = static_cast<GeneratorParamBase *>(vg[i]);
+        for (auto v : vg) {
+            auto param = static_cast<GeneratorParamBase *>(v);
             internal_assert(param != nullptr);
             user_assert(is_valid_name(param->name)) << "Invalid GeneratorParam name: " << param->name;
             user_assert(generator_params.find(param->name) == generator_params.end())
@@ -396,6 +417,19 @@ void GeneratorBase::build_params() {
         }
         params_built = true;
     }
+}
+
+std::vector<Argument> GeneratorBase::get_filter_arguments() {
+    build_params();
+    init_inputs();  // TODO(srj): not sure if we need this, unlikely we do
+    std::vector<Argument> arguments;
+    for (auto param : filter_params) {
+        arguments.push_back(to_argument(*param));
+    }
+    for (auto input : filter_inputs) {
+        arguments.push_back(to_argument(input->parameter_));
+    }
+    return arguments;
 }
 
 GeneratorParamValues GeneratorBase::get_generator_param_values() {
@@ -420,6 +454,12 @@ void GeneratorBase::set_generator_param_values(const GeneratorParamValues &param
     }
 }
 
+void GeneratorBase::init_inputs() {
+    for (auto input : filter_inputs) {
+        input->init_internals();
+    }
+}
+
 std::vector<Argument> GeneratorBase::get_filter_output_types() {
     std::vector<Argument> output_types;
     Pipeline pipeline = build_pipeline();
@@ -437,8 +477,10 @@ Module GeneratorBase::build_module(const std::string &function_name,
                                    const LoweredFunc::LinkageType linkage_type) {
     build_params();
     Pipeline pipeline = build_pipeline();
-    // Building the pipeline may mutate the params and imageparams.
-    rebuild_params();
+    // Building the pipeline may mutate the Params/ImageParams (but not Inputs).
+    if (filter_params.size() > 0) {
+        rebuild_params();
+    }
     return pipeline.compile_to_module(get_filter_arguments(), function_name, target, linkage_type);
 }
 
@@ -448,6 +490,40 @@ void GeneratorBase::emit_filter(const std::string &output_dir,
                                 const EmitOptions &options) {
     std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
     compile_module_to_filter(build_module(function_name), base_path, options);
+}
+
+GeneratorInputBase::GeneratorInputBase(const std::string &n, Type t, Kind kind, int dimensions) 
+    : parameter_(t, /*is_buffer*/ kind == Function, dimensions, n, /*is_explicit_name*/ true, /*register_instance*/ false) {
+    ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput,
+                                              this, nullptr);
+}
+
+GeneratorInputBase::~GeneratorInputBase() { 
+    ObjectInstanceRegistry::unregister_instance(this); 
+}
+
+void GeneratorInputBase::init_internals() {
+    if (parameter_.is_buffer()) {
+        if (type_param && dimension_param) {
+            parameter_ = Parameter(*type_param, /*is_buffer*/ true, *dimension_param, name(), true, false);
+        } else if (type_param) {
+            parameter_ = Parameter(*type_param, /*is_buffer*/ true, parameter_.dimensions(), name(), true, false);
+        } else if (dimension_param) {
+            parameter_ = Parameter(type(), /*is_buffer*/ true, *dimension_param, name(), true, false);
+        }
+        expr_ = Expr();
+        func_ = Func(name() + "_im");
+        std::vector<Var> args;
+        std::vector<Expr> args_expr;
+        for (int i = 0; i < parameter_.dimensions(); ++i) {
+            args.push_back(Var::implicit(i));
+            args_expr.push_back(Var::implicit(i));
+        }
+        func_(args) = Internal::Call::make(parameter_, args_expr);
+    } else {
+       expr_ = Internal::Variable::make(type(), name(), parameter_);
+       func_ = Func();
+    }
 }
 
 void generator_test() {

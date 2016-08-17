@@ -331,6 +331,10 @@ private:
         user_assert(0) << "Enumeration value not found: " << name << " = " << (int)t;
         return "";
     }
+
+private:
+    explicit GeneratorParam(const GeneratorParam &) = delete;
+    void operator=(const GeneratorParam &) = delete;
 };
 
 /** Addition between GeneratorParam<T> and any type that supports operator+ with T.
@@ -501,6 +505,161 @@ auto max(const GeneratorParam<T> &a, Other b) -> decltype(Internal::GeneratorMin
 template <typename T>
 decltype(!(T)0) operator!(const GeneratorParam<T> &a) { return !(T)a; }
 
+namespace Internal {
+
+class GeneratorInputBase {
+protected:
+    enum Kind { Scalar, Function };
+
+public:
+    /** Construct a scalar parameter of type T with the given name
+     * and default/min/max values. */
+    GeneratorInputBase(const std::string &n, Type t, Kind kind, int dimensions);
+    ~GeneratorInputBase();
+
+    std::string name() const { return parameter_.name(); }
+    Type type() const { return parameter_.type(); }
+    int dimensions() const { return parameter_.dimensions(); }
+
+protected:
+    friend class GeneratorBase;
+
+    Internal::Parameter parameter_;
+    Expr expr_;
+    Func func_;
+    const GeneratorParam<Type> *type_param{nullptr};
+    const GeneratorParam<int> *dimension_param{nullptr};
+
+    void init_internals();
+
+private:
+    explicit GeneratorInputBase(const GeneratorInputBase &) = delete;
+    void operator=(const GeneratorInputBase &) = delete;
+};
+
+}  // namespace Internal
+
+template<typename T>
+class GeneratorInput : public Internal::GeneratorInputBase {
+private:
+    // A little syntactic sugar for terser SFINAE
+    template<typename T2>
+    struct if_arithmetic : std::enable_if<std::is_arithmetic<T2>::value> {};
+
+    template<typename T2>
+    struct if_scalar : std::enable_if<
+        std::integral_constant<bool,
+                               std::is_arithmetic<T2>::value ||
+                               std::is_pointer<T2>::value
+    >::value> {};
+
+    template<typename T2>
+    struct if_func : std::enable_if<std::is_same<T2, Halide::Func>::value> {};
+
+public:
+    /** Construct a scalar Input of type T with the given name
+     * and default/min/max values. */
+    template <typename T2 = T, typename if_arithmetic<T2>::type * = nullptr>
+    GeneratorInput(const std::string &n, const T &def, const T &min, const T &max)
+        : GeneratorInputBase(n, type_of<T>(), GeneratorInputBase::Scalar, 0) {
+        parameter_.set_min_value(Expr(min));
+        parameter_.set_max_value(Expr(max));
+        parameter_.set_scalar<T>(def);
+    }
+
+    /** Construct a scalar or handle Input of type T with the given name
+     * and default value. */
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    GeneratorInput(const std::string &n, const T &def)
+        : GeneratorInputBase(n, type_of<T>(), GeneratorInputBase::Scalar, 0) {
+        parameter_.set_scalar<T>(def);
+    }
+
+    /** Construct a scalar or handle Input of type T with the given name. */
+    // @{
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    explicit GeneratorInput(const std::string &n) 
+        : GeneratorInput(n, static_cast<T>(0)) {}
+
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    explicit GeneratorInput(const char *n) 
+        : GeneratorInput(std::string(n)) {}
+    // @}
+
+    /** You can use this parameter as an expression in a halide
+     * function definition */
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    operator Expr() const { return expr_; }
+
+    /** Using an Input as the argument to an external stage treats it
+     * as an Expr */
+    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    operator ExternFuncArgument() const { return ExternFuncArgument(expr_); }
+
+
+    /** Construct a Func Input the given name, type, and dimension. */
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    GeneratorInput(const std::string &n, const Type &t, int dimensions)
+        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
+    }
+
+    /** Construct a Func Input the given name and dimension, with Type specified
+     * by a GeneratorParam. */
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    GeneratorInput(const std::string &n, const GeneratorParam<Type> &t, int dimensions)
+        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
+        type_param = &t;
+    }
+
+    /** Construct a Func Input the given name and type, with dimension specified
+     * by a GeneratorParam. */
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    GeneratorInput(const std::string &n, const Type &t, const GeneratorParam<int> &dimensions)
+        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
+        dimension_param = &dimensions;
+    }
+
+    /** Construct a Func Input the given name, with type and dimension specified
+     * by a GeneratorParam. */
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    GeneratorInput(const std::string &n, const GeneratorParam<Type> &t, const GeneratorParam<int> &dimensions)
+        : GeneratorInputBase(n, t, GeneratorInputBase::Function, dimensions) {
+        type_param = &t;
+        dimension_param = &dimensions;
+    }
+
+    // @{
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()() const { return func_(); }
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(Expr x) const { return func_(x); }
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(Expr x, Expr y) const { return func_(x, y); }
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(Expr x, Expr y, Expr z) const { return func_(x, y, z); }
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(Expr x, Expr y, Expr z, Expr w) const { return func_(x, y, z, w); }
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(std::vector<Expr> args) const { return func_(args); }
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(std::vector<Var> args) const { return func_(args); }
+    // @}
+
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
+    operator class Func() const { return func_; }
+
+private:
+    explicit GeneratorInput(const GeneratorInput &) = delete;
+    void operator=(const GeneratorInput &) = delete;
+};
+
+
 class NamesInterface {
     // Names in this class are only intended for use in derived classes.
 protected:
@@ -561,11 +720,7 @@ public:
     EXPORT GeneratorParamValues get_generator_param_values();
     EXPORT void set_generator_param_values(const GeneratorParamValues &params);
 
-    std::vector<Argument> get_filter_arguments() {
-        build_params();
-        return filter_arguments;
-    }
-
+    EXPORT std::vector<Argument> get_filter_arguments();
     EXPORT std::vector<Argument> get_filter_output_types();
 
     /** Given a data type, return an estimate of the "natural" vector size
@@ -597,7 +752,11 @@ public:
 protected:
     EXPORT GeneratorBase(size_t size, const void *introspection_helper);
 
+    EXPORT void init_inputs();
     EXPORT virtual Pipeline build_pipeline() = 0;
+
+    template<typename T>
+    using Input = GeneratorInput<T>;
 
 private:
     const size_t size;
@@ -605,7 +764,8 @@ private:
     // Note that various sections of code rely on being able to iterate
     // through these in a predictable order; do not change to unordered_map (etc)
     // without considering that.
-    std::vector<Argument> filter_arguments;
+    std::vector<Internal::Parameter *> filter_params;
+    std::vector<Internal::GeneratorInputBase *> filter_inputs;
     std::map<std::string, Internal::GeneratorParamBase *> generator_params;
     bool params_built;
 
@@ -666,6 +826,7 @@ public:
                                 Internal::Introspection::get_introspection_helper<T>()) {}
 protected:
     Pipeline build_pipeline() override {
+        init_inputs();
         return ((T *)this)->build();
     }
 

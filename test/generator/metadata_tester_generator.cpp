@@ -7,26 +7,25 @@ enum class SomeEnum { Foo,
 
 class MetadataTester : public Halide::Generator<MetadataTester> {
 public:
-    GeneratorParam<Type> input_type{ "input_type", UInt(8) };
+    GeneratorParam<Type> input_type{ "input_type", UInt(16) };  // deliberately wrong value, must be overridden to UInt(8)
+    GeneratorParam<int> input_dim{ "input_dim", 2 };            // deliberately wrong value, must be overridden to 3
     GeneratorParam<Type> output_type{ "output_type", Float(32) };
 
-    ImageParam input{ UInt(8), 3, "input" };
-    Param<bool> b{ "b", true };
-    Param<int8_t> i8{ "i8", 8, -8, 127 };
-    Param<int16_t> i16{ "i16", 16, -16, 127 };
-    Param<int32_t> i32{ "i32", 32, -32, 127 };
-    Param<int64_t> i64{ "i64", 64, -64, 127 };
-    Param<uint8_t> u8{ "u8", 80, 8, 255 };
-    Param<uint16_t> u16{ "u16", 160, 16, 2550 };
-    Param<uint32_t> u32{ "u32", 320, 32, 2550 };
-    Param<uint64_t> u64{ "u64", 640, 64, 2550 };
-    Param<float> f32{ "f32", 32.1234f, -3200.1234f, 3200.1234f };
-    Param<double> f64{ "f64", 64.25f, -6400.25f, 6400.25f };
-    Param<void *> h{ "h", nullptr };
+    Input<Func> input{ "input", input_type, input_dim };
+    Input<bool> b{ "b", true };
+    Input<int8_t> i8{ "i8", 8, -8, 127 }; 
+    Input<int16_t> i16{ "i16", 16, -16, 127 };
+    Input<int32_t> i32{ "i32", 32, -32, 127 };
+    Input<int64_t> i64{ "i64", 64, -64, 127 };
+    Input<uint8_t> u8{ "u8", 80, 8, 255 };
+    Input<uint16_t> u16{ "u16", 160, 16, 2550 };
+    Input<uint32_t> u32{ "u32", 320, 32, 2550 };
+    Input<uint64_t> u64{ "u64", 640, 64, 2550 };
+    Input<float> f32{ "f32", 32.1234f, -3200.1234f, 3200.1234f };
+    Input<double> f64{ "f64", 64.25f, -6400.25f, 6400.25f };
+    Input<void *> h{ "h", nullptr };
 
     Func build() {
-        input = ImageParam(input_type, input.dimensions(), input.name());
-
         Var x, y, c;
 
         Func f1, f2;
