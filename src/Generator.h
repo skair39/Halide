@@ -628,28 +628,11 @@ public:
         dimension_param = &dimensions;
     }
 
-    // @{
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()() const { return func_(); }
-
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()(Expr x) const { return func_(x); }
-
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()(Expr x, Expr y) const { return func_(x, y); }
-
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()(Expr x, Expr y, Expr z) const { return func_(x, y, z); }
-
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()(Expr x, Expr y, Expr z, Expr w) const { return func_(x, y, z, w); }
-
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()(std::vector<Expr> args) const { return func_(args); }
-
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    Expr operator()(std::vector<Var> args) const { return func_(args); }
-    // @}
+    template <typename... Args,
+              typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(Args&&... args) const {
+        return func_(std::forward<Args>(args)...);
+    }
 
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
     operator class Func() const { return func_; }
