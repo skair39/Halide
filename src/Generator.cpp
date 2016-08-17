@@ -587,8 +587,9 @@ void GeneratorInputBase::init_internals() {
     }
 }
 
-GeneratorOutputBase::GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d) 
-    : name_(n), types_(t), dimensions_(d), type_params_(t.size()) {
+GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &func_count, const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d) 
+    : name_(n), types_(t), dimensions_(d), func_count_(func_count) {
+    user_assert(func_count_.value >= 0) << "Output Arrays must have positive values";
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorOutput,
                                               this, nullptr);
 }
@@ -598,7 +599,7 @@ GeneratorOutputBase::~GeneratorOutputBase() {
 }
 
 void GeneratorOutputBase::init_internals() {
-    for (size_t i = 0; i < type_params_.size(); ++i) {
+    for (size_t i = 0; i < types_.size(); ++i) {
         if (types_[i].param) {
             types_[i].value = *types_[i].param;
         }
@@ -606,7 +607,19 @@ void GeneratorOutputBase::init_internals() {
     if (dimensions_.param) {
         dimensions_.value = *dimensions_.param;
     }
-    funcs_ = {Func(name())};
+    user_assert(dimensions_.value >= 0) << "Output Dimensions must have positive values";
+    if (func_count_.param) {
+        func_count_.value = *func_count_.param;
+    }
+    user_assert(func_count_.value >= 0) << "Output Arrays must have positive values";
+    funcs_.resize(func_count_.value);
+    for (int i = 0; i < func_count_.value; ++i) {
+        std::string n = name();
+        if (func_count_.value > 1) {
+            n += std::to_string(i);
+        }
+        funcs_[i] = Func(n);
+    }
 }
 
 void generator_test() {

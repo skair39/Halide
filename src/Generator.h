@@ -510,11 +510,20 @@ namespace Internal {
 template<typename T>
 struct ArgWithParam {
     T value;
-    const GeneratorParam<T> *param{nullptr};
+    const GeneratorParam<T> * const param{nullptr};
 
     // *not* explicit ctors
-    ArgWithParam(const GeneratorParam<T> &param) : value(param), param(&param) {}
     ArgWithParam(const T &value) : value(value), param(nullptr) {}
+    ArgWithParam(const GeneratorParam<T> &param) : value(param), param(&param) {}
+};
+
+template<typename T>
+struct ArgWithParamVector {
+    const std::vector<ArgWithParam<T>> v;
+    // *not* explicit
+    ArgWithParamVector(const T &value) : v{ArgWithParam<T>(value)} {}
+    ArgWithParamVector(const GeneratorParam<T> &param) : v{ArgWithParam<T>(param)} {}
+    ArgWithParamVector(std::initializer_list<ArgWithParam<T>> t) : v(t) {}
 };
 
 class GeneratorInputBase {
@@ -564,7 +573,7 @@ private:
     >::value> {};
 
     template<typename T2>
-    struct if_func : std::enable_if<std::is_same<T2, Halide::Func>::value> {};
+    struct if_func : std::enable_if<std::is_same<T2, Func>::value> {};
 
 public:
     /** Construct a scalar Input of type T with the given name
@@ -636,7 +645,9 @@ protected:
     using ArraySizeArg = Internal::ArgWithParam<int>;
 public:
     /** Construct an Output of type T with the given name and kind. */
-    GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d);
+    GeneratorOutputBase(const ArraySizeArg &func_count, const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d);
+    GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d)
+      : GeneratorOutputBase(ArraySizeArg(1), n, t, d) {}
     ~GeneratorOutputBase();
 
     const std::string &name() const { return name_; }
@@ -650,8 +661,9 @@ protected:
     const std::string name_;
     std::vector<TypeArg> types_;
     DimensionArg dimensions_;
+    ArraySizeArg func_count_;
     std::vector<Func> funcs_;
-    std::vector<const GeneratorParam<Type> *> type_params_;
+
 
     void init_internals();
 
@@ -665,72 +677,79 @@ private:
 template<typename T>
 class GeneratorOutput : public Internal::GeneratorOutputBase {
 private:
-    // A little syntactic sugar for terser SFINAE.
-
-    // "scalar" outputs are syntactic sugar on 0-dimensional Funcs, 
-    // so pointer types (aka "handles") are explicitly disallowed.
-    template<typename T2>
-    struct is_scalar : std::integral_constant<
-                            bool,
-                            std::is_arithmetic<T2>::value && !std::is_pointer<T2>::value
-                       > {};
-
-    template<typename T2>
-    struct is_func : std::is_same<T2, Halide::Func> {};
-
-    template<typename T2>
-    struct is_array : std::integral_constant<
-                            bool,
-                            std::is_array<T2>::value && (is_scalar<T2>::value || is_func<T2>::value)
-                       > {};
-
-    template<typename T2>
-    struct if_scalar : std::enable_if<is_scalar<T2>::value> {};
-
-    template<typename T2>
-    struct if_func : std::enable_if<is_func<T2>::value> {};
-
-    template<typename T2>
-    struct if_array : std::enable_if<is_array<T2>::value> {};
-
-    template<typename T2>
-    struct if_not_array : std::enable_if<is_scalar<T2>::value || is_func<T2>::value> {};
+    using TypeArgVector = Internal::ArgWithParamVector<Type>;
 
 public:
     /** Construct a "scalar" Output of type T with the given name. */
     // @{
-    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow scalar non-pointer types
+        std::is_arithmetic<T2>::value && 
+        !std::is_pointer<T2>::value
+    >::type * = nullptr>
     explicit GeneratorOutput(const std::string &n) 
         : GeneratorOutputBase(n, {type_of<T>()}, 0) {
     }
 
-    template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     explicit GeneratorOutput(const char *n) 
         : GeneratorOutput(std::string(n)) {}
     // @}
 
-    /** Construct an Output with the given name, type, and dimension. */
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    GeneratorOutput(const std::string &n, const TypeArg &t, const DimensionArg &d)
-        : GeneratorOutputBase(n, {t}, d) {
+    /** Construct a "scalar" Array Output of type T with the given name. */
+    // @{
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
+        // Only allow scalar non-pointer types
+        std::is_arithmetic<typename std::remove_all_extents<T2>::type>::value && 
+        !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
+    >::type * = nullptr>
+    GeneratorOutput(const ArraySizeArg &func_count, const std::string &n) 
+        : GeneratorOutputBase(func_count, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
     }
 
-    /** Construct an Output with the given name, types (Tuple), and dimension. */
-    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    GeneratorOutput(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d)
-        : GeneratorOutputBase(n, t, d) {
+    GeneratorOutput(const ArraySizeArg &func_count, const char *n) 
+        : GeneratorOutput(func_count, std::string(n)) {}
+    // @}
+
+    /** Construct an Output with the given name, type(s), and dimension. */
+    template <typename T2 = T, typename std::enable_if<std::is_same<T2, Func>::value>::type * = nullptr>
+    GeneratorOutput(const std::string &n, const TypeArgVector &t, const DimensionArg &d)
+        : GeneratorOutputBase(n, t.v, d) {
     }
 
-    template <typename... Args, typename T2 = T, typename if_not_array<T2>::type * = nullptr>
+    /** Construct an Array Output with the given name, type (Tuple), and dimension. */
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
+        // Only allow Func
+        std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
+    >::type * = nullptr>
+    GeneratorOutput(const ArraySizeArg &func_count, const std::string &n, const TypeArgVector &t, const DimensionArg &d)
+        : GeneratorOutputBase(func_count, n, t.v, d) {
+    }
+
+    template <typename... Args, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
         internal_assert(funcs_.size() == 1);
         return funcs_[0](std::forward<Args>(args)...);
     }
 
-    template <typename T2 = T, typename if_not_array<T2>::type * = nullptr>
+    template <typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     operator class Func() const { 
         internal_assert(funcs_.size() == 1);
         return funcs_[0]; 
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    size_t size() const {
+        return funcs_.size();
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    Func operator[](size_t i) const {
+        user_assert(i < funcs_.size());
+        return funcs_[i];
     }
 
 private:

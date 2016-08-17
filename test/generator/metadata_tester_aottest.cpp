@@ -126,7 +126,8 @@ Image<Type> make_image() {
 }
 
 template <typename InputType, typename OutputType>
-void verify(const Image<InputType> &input, const Image<OutputType> &output0, const Image<OutputType> &output1, const Image<OutputType> &output_scalar) {
+void verify(const Image<InputType> &input, const Image<OutputType> &output0, const Image<OutputType> &output1, 
+            const Image<OutputType> &output_scalar, const Image<OutputType> &output_array0, const Image<OutputType> &output_array1) {
     // Image doesn't allow for zero-dimensional buffers -- use 1-dimensional for now
     if (output_scalar.dimensions() != 1 || output_scalar.width() != 1) {
         fprintf(stderr, "output_scalar should be zero-dimensional\n");
@@ -149,6 +150,14 @@ void verify(const Image<InputType> &input, const Image<OutputType> &output0, con
                 }
                 if (expected1 != actual1) {
                     fprintf(stderr, "img1[%d, %d, %d] = %f, expected %f\n", x, y, c, (double)actual1, (double)expected1);
+                    exit(-1);
+                }
+                if (output_array0(x, y, c) != 1.5f) {
+                    fprintf(stderr, "output_array0[%d, %d, %d] = %f, expected %f\n", x, y, c, output_array0(x, y, c), 1.5f);
+                    exit(-1);
+                }
+                if (output_array1(x, y, c) != 3.0f) {
+                    fprintf(stderr, "output_array1[%d, %d, %d] = %f, expected %f\n", x, y, c, output_array1(x, y, c), 3.0f);
                     exit(-1);
                 }
             }
@@ -407,6 +416,24 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
           nullptr,
           nullptr,
+        },
+        {
+          "array_outputs0",
+          halide_argument_kind_output_buffer,
+          3,
+          halide_type_t(halide_type_float, 32),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_outputs1",
+          halide_argument_kind_output_buffer,
+          3,
+          halide_type_t(halide_type_float, 32),
+          nullptr,
+          nullptr,
+          nullptr,
         }
     };
     const int kExpectedArgumentCount = (int)sizeof(kExpectedArguments) / sizeof(kExpectedArguments[0]);
@@ -443,22 +470,23 @@ int main(int argc, char **argv) {
     result = halide_enumerate_registered_filters(user_context, &enum_results, EnumerateFunc);
     EXPECT_EQ(0, result);
     EXPECT_EQ(2, enum_results.size());
-    EXPECT_EQ(16, enum_results["metadata_tester"]);
-    EXPECT_EQ(17, enum_results["metadata_tester_ucon"]);
+    EXPECT_EQ(18, enum_results["metadata_tester"]);
+    EXPECT_EQ(19, enum_results["metadata_tester_ucon"]);
 
     Image<uint8_t> input = make_image<uint8_t>();
 
     Image<float> output0(kSize, kSize, 3);
     Image<float> output1(kSize, kSize, 3);
     Image<float> output_scalar(1);  // Image doesn't allow for zero-dimensional buffers
+    Image<float> output_array[2] = {{kSize, kSize, 3}, {kSize, kSize, 3}};
 
-    result = metadata_tester(input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, output0, output1, output_scalar);
+    result = metadata_tester(input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, output0, output1, output_scalar, output_array[0], output_array[1]);
     EXPECT_EQ(0, result);
 
-    result = metadata_tester_ucon(user_context, input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, output0, output1, output_scalar);
+    result = metadata_tester_ucon(user_context, input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, output0, output1, output_scalar, output_array[0], output_array[1]);
     EXPECT_EQ(0, result);
 
-    verify(input, output0, output1, output_scalar);
+    verify(input, output0, output1, output_scalar, output_array[0], output_array[1]);
 
     check_metadata(*metadata_tester_metadata(), false);
     if (!strcmp(metadata_tester_metadata()->name, "metadata_tester_metadata")) {

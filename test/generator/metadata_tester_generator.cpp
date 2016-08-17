@@ -7,10 +7,11 @@ enum class SomeEnum { Foo,
 
 class MetadataTester : public Halide::Generator<MetadataTester> {
 public:
-    GeneratorParam<Type> input_type{ "input_type", Int(16) };       // deliberately wrong value, must be overridden to UInt(8)
-    GeneratorParam<int> input_dim{ "input_dim", 2 };                // deliberately wrong value, must be overridden to 3
-    GeneratorParam<Type> output_type{ "output_type", Int(16) };     // deliberately wrong value, must be overridden to Float(32)
-    GeneratorParam<int> output_dim{ "output_dim", 2 };              // deliberately wrong value, must be overridden to 3 
+    GeneratorParam<Type> input_type{ "input_type", Int(16) };              // deliberately wrong value, must be overridden to UInt(8)
+    GeneratorParam<int> input_dim{ "input_dim", 2 };                       // deliberately wrong value, must be overridden to 3
+    GeneratorParam<Type> output_type{ "output_type", Int(16) };            // deliberately wrong value, must be overridden to Float(32)
+    GeneratorParam<int> output_dim{ "output_dim", 2 };                     // deliberately wrong value, must be overridden to 3 
+    GeneratorParam<int> array_outputs_count{ "array_outputs_count", 32 };  // deliberately wrong value, must be overridden to 2
 
     Input<Func> input{ "input", input_type, input_dim };
     Input<bool> b{ "b", true };
@@ -28,7 +29,9 @@ public:
 
     Output<Func> output{ "output", {output_type, Float(32)}, output_dim };
     Output<float> output_scalar{ "output_scalar" };
-    //Output<Func[]> outputs{ "outputs", Float(32), 3 };
+    Output<Func[]> array_outputs{ array_outputs_count, "array_outputs", Float(32), 3 };
+    // array count of 0 means there are no outputs: for AOT, doesn't affect signature
+    Output<Func[]> empty_outputs{ 0, "empty_outputs", Float(32), 3 };
 
     void generate() {
         Var x, y, c;
@@ -39,6 +42,9 @@ public:
 
         output(x, y, c) = Tuple(f1(x, y, c), f2(x, y, c));
         output_scalar() = 1234.25f;
+        for (size_t i = 0; i < array_outputs.size(); ++i) {
+            array_outputs[i](x, y, c) = (i + 1) * 1.5f;
+        }
     }
 };
 
