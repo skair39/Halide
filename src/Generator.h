@@ -512,21 +512,20 @@ protected:
     enum Kind { Scalar, Function };
 
 public:
-    /** Construct a scalar parameter of type T with the given name
-     * and default/min/max values. */
+    /** Construct an Input of type T with the given name and kind. */
     GeneratorInputBase(const std::string &n, Type t, Kind kind, int dimensions);
     ~GeneratorInputBase();
 
-    std::string name() const { return parameter_.name(); }
-    Type type() const { return parameter_.type(); }
-    int dimensions() const { return parameter_.dimensions(); }
+    std::string name() const { return parameter.name(); }
+    Type type() const { return parameter.type(); }
+    int dimensions() const { return parameter.dimensions(); }
 
 protected:
     friend class GeneratorBase;
 
-    Internal::Parameter parameter_;
-    Expr expr_;
-    Func func_;
+    Internal::Parameter parameter;
+    Expr expr;
+    Func func;
     const GeneratorParam<Type> *type_param{nullptr};
     const GeneratorParam<int> *dimension_param{nullptr};
 
@@ -562,9 +561,9 @@ public:
     template <typename T2 = T, typename if_arithmetic<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def, const T &min, const T &max)
         : GeneratorInputBase(n, type_of<T>(), GeneratorInputBase::Scalar, 0) {
-        parameter_.set_min_value(Expr(min));
-        parameter_.set_max_value(Expr(max));
-        parameter_.set_scalar<T>(def);
+        parameter.set_min_value(Expr(min));
+        parameter.set_max_value(Expr(max));
+        parameter.set_scalar<T>(def);
     }
 
     /** Construct a scalar or handle Input of type T with the given name
@@ -572,7 +571,7 @@ public:
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def)
         : GeneratorInputBase(n, type_of<T>(), GeneratorInputBase::Scalar, 0) {
-        parameter_.set_scalar<T>(def);
+        parameter.set_scalar<T>(def);
     }
 
     /** Construct a scalar or handle Input of type T with the given name. */
@@ -586,15 +585,15 @@ public:
         : GeneratorInput(std::string(n)) {}
     // @}
 
-    /** You can use this parameter as an expression in a halide
+    /** You can use this Input as an expression in a halide
      * function definition */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
-    operator Expr() const { return expr_; }
+    operator Expr() const { return expr; }
 
     /** Using an Input as the argument to an external stage treats it
      * as an Expr */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
-    operator ExternFuncArgument() const { return ExternFuncArgument(expr_); }
+    operator ExternFuncArgument() const { return ExternFuncArgument(expr); }
 
 
     /** Construct a Func Input the given name, type, and dimension. */
@@ -631,11 +630,11 @@ public:
     template <typename... Args,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(Args&&... args) const {
-        return func_(std::forward<Args>(args)...);
+        return func(std::forward<Args>(args)...);
     }
 
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    operator class Func() const { return func_; }
+    operator class Func() const { return func; }
 
 private:
     explicit GeneratorInput(const GeneratorInput &) = delete;

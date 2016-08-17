@@ -427,7 +427,7 @@ std::vector<Argument> GeneratorBase::get_filter_arguments() {
         arguments.push_back(to_argument(*param));
     }
     for (auto input : filter_inputs) {
-        arguments.push_back(to_argument(input->parameter_));
+        arguments.push_back(to_argument(input->parameter));
     }
     return arguments;
 }
@@ -493,7 +493,7 @@ void GeneratorBase::emit_filter(const std::string &output_dir,
 }
 
 GeneratorInputBase::GeneratorInputBase(const std::string &n, Type t, Kind kind, int dimensions) 
-    : parameter_(t, /*is_buffer*/ kind == Function, dimensions, n, /*is_explicit_name*/ true, /*register_instance*/ false) {
+    : parameter(t, /*is_buffer*/ kind == Function, dimensions, n, /*is_explicit_name*/ true, /*register_instance*/ false) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput,
                                               this, nullptr);
 }
@@ -503,26 +503,26 @@ GeneratorInputBase::~GeneratorInputBase() {
 }
 
 void GeneratorInputBase::init_internals() {
-    if (parameter_.is_buffer()) {
+    if (parameter.is_buffer()) {
         if (type_param && dimension_param) {
-            parameter_ = Parameter(*type_param, /*is_buffer*/ true, *dimension_param, name(), true, false);
+            parameter = Parameter(*type_param, /*is_buffer*/ true, *dimension_param, name(), true, false);
         } else if (type_param) {
-            parameter_ = Parameter(*type_param, /*is_buffer*/ true, parameter_.dimensions(), name(), true, false);
+            parameter = Parameter(*type_param, /*is_buffer*/ true, parameter.dimensions(), name(), true, false);
         } else if (dimension_param) {
-            parameter_ = Parameter(type(), /*is_buffer*/ true, *dimension_param, name(), true, false);
+            parameter = Parameter(type(), /*is_buffer*/ true, *dimension_param, name(), true, false);
         }
-        expr_ = Expr();
-        func_ = Func(name() + "_im");
+        expr = Expr();
+        func = Func(name() + "_im");
         std::vector<Var> args;
         std::vector<Expr> args_expr;
-        for (int i = 0; i < parameter_.dimensions(); ++i) {
+        for (int i = 0; i < parameter.dimensions(); ++i) {
             args.push_back(Var::implicit(i));
             args_expr.push_back(Var::implicit(i));
         }
-        func_(args) = Internal::Call::make(parameter_, args_expr);
+        func(args) = Internal::Call::make(parameter, args_expr);
     } else {
-       expr_ = Internal::Variable::make(type(), name(), parameter_);
-       func_ = Func();
+       expr = Internal::Variable::make(type(), name(), parameter);
+       func = Func();
     }
 }
 
