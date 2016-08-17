@@ -499,21 +499,23 @@ void GeneratorBase::pre_generate() {
 Pipeline GeneratorBase::post_generate() {
     std::vector<Func> funcs;
     for (auto output : filter_outputs) {
-        user_assert(output->func.defined()) << "Output \"" << output->func.name() << "\" was not defined.\n";
-        user_assert(output->func.dimensions() == output->dimensions()) << "Output \"" << output->func.name() 
-            << "\" requires dimensions=" << output->dimensions() 
-            << " but was defined as dimensions=" << output->func.dimensions() << ".\n";
-        user_assert((int)output->func.outputs() == (int)output->types().size()) << "Output \"" << output->func.name() 
-                << "\" requires a Tuple of size " << output->types().size() 
-                << " but was defined as Tuple of size " << output->func.outputs() << ".\n";
-        for (size_t i = 0; i < output->func.output_types().size(); ++i) {
-            Type expected = output->types()[i];
-            Type actual = output->func.output_types()[i];
-            user_assert(expected == actual) << "Output \"" << output->func.name() 
-                << "\" requires type " << expected 
-                << " but was defined as type " << actual << ".\n";
+        for (auto f : output->funcs_) {
+            user_assert(f.defined()) << "Output \"" << f.name() << "\" was not defined.\n";
+            user_assert(f.dimensions() == output->dimensions()) << "Output \"" << f.name() 
+                << "\" requires dimensions=" << output->dimensions() 
+                << " but was defined as dimensions=" << f.dimensions() << ".\n";
+            user_assert((int)f.outputs() == (int)output->type_size()) << "Output \"" << f.name() 
+                    << "\" requires a Tuple of size " << output->type_size() 
+                    << " but was defined as Tuple of size " << f.outputs() << ".\n";
+            for (size_t i = 0; i < f.output_types().size(); ++i) {
+                Type expected = output->type_at(i);
+                Type actual = f.output_types()[i];
+                user_assert(expected == actual) << "Output \"" << f.name() 
+                    << "\" requires type " << expected 
+                    << " but was defined as type " << actual << ".\n";
+            }
+            funcs.push_back(f);
         }
-        funcs.push_back(output->func);
     }
     return Pipeline(funcs);
 }
@@ -586,11 +588,7 @@ void GeneratorInputBase::init_internals() {
 }
 
 GeneratorOutputBase::GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d) 
-    : name_(n), types_(t.size()), dimensions_(d.value), type_params_(t.size()), dimension_param_(d.param) {
-    for (size_t i = 0; i < t.size(); ++i) {
-        types_[i] = t[i].value;
-        type_params_[i] = t[i].param;
-    }
+    : name_(n), types_(t), dimensions_(d), type_params_(t.size()) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorOutput,
                                               this, nullptr);
 }
@@ -601,14 +599,14 @@ GeneratorOutputBase::~GeneratorOutputBase() {
 
 void GeneratorOutputBase::init_internals() {
     for (size_t i = 0; i < type_params_.size(); ++i) {
-        if (type_params_[i]) {
-            types_[i] = *type_params_[i];
+        if (types_[i].param) {
+            types_[i].value = *types_[i].param;
         }
     }
-    if (dimension_param_) {
-        dimensions_ = *dimension_param_;
+    if (dimensions_.param) {
+        dimensions_.value = *dimensions_.param;
     }
-    func = Func(name());
+    funcs_ = {Func(name())};
 }
 
 void generator_test() {

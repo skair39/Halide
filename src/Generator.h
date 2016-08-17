@@ -633,24 +633,25 @@ class GeneratorOutputBase {
 protected:
     using TypeArg = Internal::ArgWithParam<Type>;
     using DimensionArg = Internal::ArgWithParam<int>;
+    using ArraySizeArg = Internal::ArgWithParam<int>;
 public:
     /** Construct an Output of type T with the given name and kind. */
     GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d);
     ~GeneratorOutputBase();
 
-    std::string name() const { return name_; }
-    const std::vector<Type> & types() const { return types_; }
-    int dimensions() const { return dimensions_; }
+    const std::string &name() const { return name_; }
+    size_t type_size() const { return types_.size(); }
+    Type type_at(size_t i) const { return types_.at(i).value; }
+    int dimensions() const { return dimensions_.value; }
 
 protected:
     friend class GeneratorBase;
 
     const std::string name_;
-    std::vector<Type> types_;
-    int dimensions_;
-    Func func;
+    std::vector<TypeArg> types_;
+    DimensionArg dimensions_;
+    std::vector<Func> funcs_;
     std::vector<const GeneratorParam<Type> *> type_params_;
-    const GeneratorParam<int> * const dimension_param_{nullptr};
 
     void init_internals();
 
@@ -669,16 +670,31 @@ private:
     // "scalar" outputs are syntactic sugar on 0-dimensional Funcs, 
     // so pointer types (aka "handles") are explicitly disallowed.
     template<typename T2>
-    struct if_scalar : std::enable_if<
-        std::integral_constant<
-            bool,
-            std::is_arithmetic<T2>::value &&
-            !std::is_pointer<T2>::value
-         >::value
-    > {};
+    struct is_scalar : std::integral_constant<
+                            bool,
+                            std::is_arithmetic<T2>::value && !std::is_pointer<T2>::value
+                       > {};
 
     template<typename T2>
-    struct if_func : std::enable_if<std::is_same<T2, Halide::Func>::value> {};
+    struct is_func : std::is_same<T2, Halide::Func> {};
+
+    template<typename T2>
+    struct is_array : std::integral_constant<
+                            bool,
+                            std::is_array<T2>::value && (is_scalar<T2>::value || is_func<T2>::value)
+                       > {};
+
+    template<typename T2>
+    struct if_scalar : std::enable_if<is_scalar<T2>::value> {};
+
+    template<typename T2>
+    struct if_func : std::enable_if<is_func<T2>::value> {};
+
+    template<typename T2>
+    struct if_array : std::enable_if<is_array<T2>::value> {};
+
+    template<typename T2>
+    struct if_not_array : std::enable_if<is_scalar<T2>::value || is_func<T2>::value> {};
 
 public:
     /** Construct a "scalar" Output of type T with the given name. */
@@ -705,12 +721,17 @@ public:
         : GeneratorOutputBase(n, t, d) {
     }
 
-    template <typename... Args>
+    template <typename... Args, typename T2 = T, typename if_not_array<T2>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
-        return func(std::forward<Args>(args)...);
+        internal_assert(funcs_.size() == 1);
+        return funcs_[0](std::forward<Args>(args)...);
     }
 
-    operator class Func() const { return func; }
+    template <typename T2 = T, typename if_not_array<T2>::type * = nullptr>
+    operator class Func() const { 
+        internal_assert(funcs_.size() == 1);
+        return funcs_[0]; 
+    }
 
 private:
     explicit GeneratorOutput(const GeneratorOutput &) = delete;

@@ -28,6 +28,7 @@ public:
 
     Output<Func> output{ "output", {output_type, Float(32)}, output_dim };
     Output<float> output_scalar{ "output_scalar" };
+    //Output<Func[]> outputs{ "outputs", Float(32), 3 };
 
     void generate() {
         Var x, y, c;
