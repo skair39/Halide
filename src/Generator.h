@@ -628,6 +628,12 @@ public:
         return func(std::forward<Args>(args)...);
     }
 
+    template <typename ExprOrVar,
+              typename T2 = T, typename if_func<T2>::type * = nullptr>
+    Expr operator()(std::vector<Expr> args) const {
+        return func(args);
+    }
+
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
     operator class Func() const { return func; }
 
@@ -733,6 +739,12 @@ public:
     FuncRef operator()(Args&&... args) const {
         internal_assert(funcs_.size() == 1);
         return funcs_[0](std::forward<Args>(args)...);
+    }
+
+    template <typename ExprOrVar, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
+    FuncRef operator()(std::vector<ExprOrVar> args) const {
+        internal_assert(funcs_.size() == 1);
+        return funcs_[0](args);
     }
 
     template <typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
