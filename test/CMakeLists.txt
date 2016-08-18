@@ -188,24 +188,19 @@ if (WITH_TEST_GENERATORS)
                                GENERATOR_TARGET "${GEN_NAME}${OBJ_GEN_EXE_SUFFIX}"
                                GENERATOR_NAME "${GEN_NAME}"
                                GENERATED_FUNCTION "${FUNC_NAME}"
-                               GENERATOR_ARGS "target=host levels=10")
-      halide_add_generator_dependency(TARGET "${TEST_RUNNER}"
-                               GENERATOR_TARGET "${GEN_NAME}${OBJ_GEN_EXE_SUFFIX}"
-                               GENERATOR_NAME "${GEN_NAME}"
-                               GENERATED_FUNCTION "${FUNC_NAME}_ucon"
-                               GENERATOR_ARGS "target=host-register_metadata-user_context input_type=uint8 input_dim=3 output_type=float32 output_dim=3 array_outputs_count=2")
+                               GENERATOR_ARGS "target=host" "levels=10")
     # metadata_tester_aottest.cpp depends on two variants of metadata_generator
     elseif(TEST_SRC STREQUAL "metadata_tester_aottest.cpp")
       halide_add_generator_dependency(TARGET "${TEST_RUNNER}"
                                GENERATOR_TARGET "${GEN_NAME}${OBJ_GEN_EXE_SUFFIX}"
                                GENERATOR_NAME "${GEN_NAME}"
                                GENERATED_FUNCTION "${FUNC_NAME}"
-                               GENERATOR_ARGS "target=host-register_metadata input_type=uint8 input_dim=3 output_type=float32 output_dim=3 array_outputs_count=2")
+                               GENERATOR_ARGS "target=host-register_metadata" "input_type=uint8" "input_dim=3" "output_type=float32" "output_dim=3" "array_outputs_count=2")
       halide_add_generator_dependency(TARGET "${TEST_RUNNER}"
                                GENERATOR_TARGET "${GEN_NAME}${OBJ_GEN_EXE_SUFFIX}"
                                GENERATOR_NAME "${GEN_NAME}"
                                GENERATED_FUNCTION "${FUNC_NAME}_ucon"
-                               GENERATOR_ARGS "target=host-register_metadata-user_context input_type=uint8 input_dim=3 output_type=float32 output_dim=3 array_outputs_count=2")
+                               GENERATOR_ARGS "target=host-register_metadata-user_context" "input_type=uint8" "input_dim=3" "output_type=float32" "output_dim=3" "array_outputs_count=2")
     elseif(TEST_SRC STREQUAL "cxx_mangling_aottest.cpp")
       halide_add_generator_dependency(TARGET "${TEST_RUNNER}"
                                GENERATOR_TARGET "${GEN_NAME}${OBJ_GEN_EXE_SUFFIX}"
