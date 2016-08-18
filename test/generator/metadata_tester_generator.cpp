@@ -46,6 +46,10 @@ public:
             array_outputs[i](x, y, c) = (i + 1) * 1.5f;
         }
     }
+
+    void schedule() {
+        // empty
+    }
 };
 
 Halide::RegisterGenerator<MetadataTester> register_MetadataTester{ "metadata_tester" };

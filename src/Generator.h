@@ -930,9 +930,21 @@ public:
         Internal::GeneratorBase(sizeof(T),
                                 Internal::Introspection::get_introspection_helper<T>()) {}
 private:
+    // std::is_member_function_pointer will fail if there is no member of that name,
+    // so we use a little SFINAE to detect if there is a method-shaped member named 'schedule'.
+    template<typename> 
+    struct type_sink { typedef void type; };
+    
+    template<typename T2, typename = void> 
+    struct has_schedule_method : std::false_type {}; 
+    
+    template<typename T2> 
+    struct has_schedule_method<T2, typename type_sink<decltype(std::declval<T2>().schedule())>::type> : std::true_type {};
+
     template <typename T2 = T,
               typename std::enable_if<std::is_member_function_pointer<decltype(&T2::build)>::value>::type * = nullptr>
     Pipeline build_pipeline_impl() {
+        static_assert(!has_schedule_method<T2>::value, "The schedule() method is ignored if you define a build() method; use generate() instead.");
         pre_build();
         return ((T *)this)->build();
     }
@@ -940,10 +952,13 @@ private:
     template <typename T2 = T,
               typename std::enable_if<std::is_member_function_pointer<decltype(&T2::generate)>::value>::type * = nullptr>
     Pipeline build_pipeline_impl() {
-        typedef typename std::result_of<decltype(&T::generate)(T)>::type RetType;
-        static_assert(std::is_void<RetType>::value, "generate() must return void");
+        typedef typename std::result_of<decltype(&T::generate)(T)>::type GenerateRetType;
+        typedef typename std::result_of<decltype(&T::schedule)(T)>::type ScheduleRetType;
+        static_assert(std::is_void<GenerateRetType>::value, "generate() must return void");
+        static_assert(std::is_void<ScheduleRetType>::value, "schedule() must return void");
         pre_generate();
         ((T *)this)->generate();
+        ((T *)this)->schedule();
         return post_generate();
     }
 

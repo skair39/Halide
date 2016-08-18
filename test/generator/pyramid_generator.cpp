@@ -16,7 +16,9 @@ public:
         for (int i = 1; i < levels; i++) {
             pyramid[i](x, y) = downsample(pyramid[i-1])(x, y);
         }
+    }
 
+    void schedule() {
         for (int i = 0; i < levels; i++) {
             // No need to specify compute_root() for outputs
             pyramid[i].parallel(y);
@@ -24,7 +26,8 @@ public:
             const int v = natural_vector_size<float>();
             pyramid[i].specialize(pyramid[i].output_buffer().width() >= v).vectorize(x, v);
         }
-    }
+     }
+
 private:
     Var x, y;
 
