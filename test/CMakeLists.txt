@@ -96,7 +96,7 @@ if (WITH_TEST_GENERATORS)
   set(OBJ_GEN_EXE_SUFFIX ".generator")
   foreach(gen_src ${GENS})
     string(REPLACE "_generator.cpp" "" lib_name "${gen_src}")
-    halide_library(${lib_name}.generator_lib SHARED "generator_libs"
+    halide_library(${lib_name}.generator_lib STATIC "generator_libs"
                    "generator/${gen_src}")
 
     string(REPLACE "_generator.cpp" "" gen_name "${gen_src}${OBJ_GEN_EXE_SUFFIX}")
