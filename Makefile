@@ -171,17 +171,24 @@ TUTORIAL_CXX_FLAGS ?= -std=c++11 $(BUILD_BIT_SIZE) -g -fno-omit-frame-pointer -f
 TEST_CXX_FLAGS ?= $(TUTORIAL_CXX_FLAGS) $(CXX_WARNING_FLAGS)
 TEST_LD_LIBS = -L$(BIN_DIR) -lHalide -lpthread $(LIBDL) -lz
 TEST_LD_RPATHS = 
-TEST_LD_WHOLE_ARCHIVE =
 
 ifeq ($(UNAME), Linux)
-TEST_LD_WHOLE_ARCHIVE = -Wl,--whole-archive
-endif
-ifeq ($(OS), Windows_NT)
+define link_whole_archive
+    -Wl,--whole-archive $(1) -Wl,--no-whole-archive
+endef
+else ifeq ($(UNAME), Darwin)
+define link_whole_archive
+    -Wl,-force_load $(1)
+endef
+else ifeq ($(OS), Windows_NT)
 # assume MinGW
-TEST_LD_WHOLE_ARCHIVE = -Wl,--whole-archive
-endif
-ifeq ($(UNAME), Darwin)
-TEST_LD_WHOLE_ARCHIVE = -Wl,-force_load
+define link_whole_archive
+    -Wl,--whole-archive $(1) -Wl,--no-whole-archive
+endef
+else
+define link_whole_archive
+    $(1)
+endef
 endif
 
 ifeq ($(UNAME), Linux)
@@ -897,10 +904,10 @@ $(BIN_DIR)/%.generator_lib.a: $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLU
 	@mkdir -p $(BIN_DIR)
 	$(CXX) $(TEST_CXX_FLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
-# Generators must be build with $(TEST_LD_WHOLE_ARCHIVE) to ensure the HalideRegister data is not stripped
+# Generators must be build with link_whole_archive to ensure the HalideRegister data is not stripped
 $(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/%.generator_lib.a
 	@mkdir -p $(BIN_DIR)
-	$(CXX) $(TEST_LD_WHOLE_ARCHIVE) $^ $(TEST_LD_FLAGS) -o $@
+	$(CXX) $(filter-out %.a,$^) $(call link_whole_archive, $(filter %.a,$^)) $(TEST_LD_FLAGS) -o $@
 
 NON_EMPTY_TARGET=$(if $(HL_TARGET),$(HL_TARGET),host)
 NAME_MANGLING_TARGET=$(NON_EMPTY_TARGET)-c_plus_plus_name_mangling
