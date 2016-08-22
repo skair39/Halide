@@ -171,6 +171,18 @@ TUTORIAL_CXX_FLAGS ?= -std=c++11 $(BUILD_BIT_SIZE) -g -fno-omit-frame-pointer -f
 TEST_CXX_FLAGS ?= $(TUTORIAL_CXX_FLAGS) $(CXX_WARNING_FLAGS)
 TEST_LD_LIBS = -L$(BIN_DIR) -lHalide -lpthread $(LIBDL) -lz
 TEST_LD_RPATHS = 
+TEST_LD_WHOLE_ARCHIVE =
+
+ifeq ($(UNAME), Linux)
+TEST_LD_WHOLE_ARCHIVE = -Wl,--whole-archive
+endif
+ifeq ($(OS), Windows_NT)
+# assume MinGW
+TEST_LD_WHOLE_ARCHIVE = -Wl,--whole-archive
+endif
+ifeq ($(UNAME), Darwin)
+TEST_LD_WHOLE_ARCHIVE = -Wl,-force_load
+endif
 
 ifeq ($(UNAME), Linux)
 TEST_LD_RPATHS += -rdynamic -Wl,--rpath=$(CURDIR)/$(BIN_DIR)
@@ -881,13 +893,14 @@ $(BIN_DIR)/renderscript_%: $(ROOT_DIR)/test/renderscript/%.cpp $(BIN_DIR)/libHal
 # By default, %.generator is produced by building %_generator.cpp
 # Note that the rule includes all _generator.cpp files, so that generators with define_extern
 # usage can just add deps later.
-$(BIN_DIR)/lib%.generator.$(SHARED_EXT): $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLUDE_DIR)/Halide.h
+$(BIN_DIR)/%.generator_lib.a: $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLUDE_DIR)/Halide.h
 	@mkdir -p $(BIN_DIR)
-	$(CXX) $(TEST_CXX_FLAGS) -I$(INCLUDE_DIR) $(TEST_LD_RPATHS) -c $< -o $@
+	$(CXX) $(TEST_CXX_FLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
-$(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/lib%.generator.$(SHARED_EXT)
+# Generators must be build with $(TEST_LD_WHOLE_ARCHIVE) to ensure the HalideRegister data is not stripped
+$(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/%.generator_lib.a
 	@mkdir -p $(BIN_DIR)
-	$(CXX) $^ $(TEST_LD_FLAGS) -o $@
+	$(CXX) $(TEST_LD_WHOLE_ARCHIVE) $^ $(TEST_LD_FLAGS) -o $@
 
 NON_EMPTY_TARGET=$(if $(HL_TARGET),$(HL_TARGET),host)
 NAME_MANGLING_TARGET=$(NON_EMPTY_TARGET)-c_plus_plus_name_mangling
