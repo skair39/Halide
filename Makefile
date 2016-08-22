@@ -164,14 +164,6 @@ LLVM_LD_FLAGS = $(shell $(LLVM_CONFIG) --ldflags --system-libs | sed -e 's/\\/\/
 
 UNAME = $(shell uname)
 
-TUTORIAL_CXX_FLAGS ?= -std=c++11 $(BUILD_BIT_SIZE) -g -fno-omit-frame-pointer -fno-rtti -I $(ROOT_DIR)/tools
-# The tutorials contain example code with warnings that we don't want
-# to be flagged as errors, so the test flags are the tutorial flags
-# plus our warning flags.
-TEST_CXX_FLAGS ?= $(TUTORIAL_CXX_FLAGS) $(CXX_WARNING_FLAGS)
-TEST_LD_LIBS = -L$(BIN_DIR) -lHalide -lpthread $(LIBDL) -lz
-TEST_LD_RPATHS = 
-
 ifeq ($(UNAME), Linux)
 define link_whole_archive
     -Wl,--whole-archive $(1) -Wl,--no-whole-archive
@@ -191,8 +183,15 @@ define link_whole_archive
 endef
 endif
 
+TUTORIAL_CXX_FLAGS ?= -std=c++11 $(BUILD_BIT_SIZE) -g -fno-omit-frame-pointer -fno-rtti -I $(ROOT_DIR)/tools
+# The tutorials contain example code with warnings that we don't want
+# to be flagged as errors, so the test flags are the tutorial flags
+# plus our warning flags.
+TEST_CXX_FLAGS ?= $(TUTORIAL_CXX_FLAGS) $(CXX_WARNING_FLAGS)
+TEST_LD_FLAGS = -L$(BIN_DIR) -lHalide -lpthread $(LIBDL) -lz		
+
 ifeq ($(UNAME), Linux)
-TEST_LD_RPATHS += -rdynamic -Wl,--rpath=$(CURDIR)/$(BIN_DIR)
+TEST_LD_FLAGS += -rdynamic -Wl,--rpath=$(CURDIR)/$(BIN_DIR)
 endif
 
 ifneq ($(WITH_PTX), )
@@ -662,13 +661,11 @@ INITIAL_MODULES = $(RUNTIME_CPP_COMPONENTS:%=$(BUILD_DIR)/initmod.%_32.o) \
 ifeq ($(UNAME), Linux)
 ifneq (,$(WITH_HEXAGON))
 ifneq (,$(HL_HEXAGON_TOOLS))
-TEST_LD_RPATHS += -Wl,--rpath=$(ROOT_DIR)/src/runtime/hexagon_remote/bin/host
-TEST_LD_RPATHS += -Wl,--rpath=$(HL_HEXAGON_TOOLS)/lib/iss
+TEST_LD_FLAGS += -Wl,--rpath=$(ROOT_DIR)/src/runtime/hexagon_remote/bin/host
+TEST_LD_FLAGS += -Wl,--rpath=$(HL_HEXAGON_TOOLS)/lib/iss
 endif
 endif
 endif
-
-TEST_LD_FLAGS = $(TEST_LD_LIBS) $(TEST_LD_RPATHS)
 
 .PHONY: all
 all: $(LIB_DIR)/libHalide.a $(BIN_DIR)/libHalide.$(SHARED_EXT) $(INCLUDE_DIR)/Halide.h $(RUNTIME_EXPORTED_INCLUDES) test_internal
