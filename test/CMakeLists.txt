@@ -65,6 +65,17 @@ if (WITH_TEST_RENDERSCRIPT)
   tests(renderscript)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set(LINK_WHOLE_ARCHIVE_ON "-Wl,-force_load")
+  set(LINK_WHOLE_ARCHIVE_OFF "")
+elseif (UNIX)
+  set(LINK_WHOLE_ARCHIVE_ON "-Wl,--whole-archive")
+  set(LINK_WHOLE_ARCHIVE_OFF "-Wl,--no-whole-archive")
+else()
+  set(LINK_WHOLE_ARCHIVE_ON "")
+  set(LINK_WHOLE_ARCHIVE_OFF "")
+endif()
+
 if (WITH_TEST_GENERATORS)
   # Generator tests for just-in-time mode:
   # For foo_generator.cpp, assume it contains a single generator named 'foo'
@@ -103,7 +114,8 @@ if (WITH_TEST_GENERATORS)
     # CMake requires that we pass at least one source file to add_executable(),
     # so we might as well use GenGen.cpp here (rather than faking up an empty source file).
     halide_project(${gen_name} "generator" "${CMAKE_CURRENT_SOURCE_DIR}/../tools/GenGen.cpp")
-    target_link_libraries(${gen_name} PRIVATE ${lib_name}.generator_lib)
+    target_link_libraries(${gen_name} PRIVATE 
+        ${LINK_WHOLE_ARCHIVE_ON} ${lib_name}.generator_lib ${LINK_WHOLE_ARCHIVE_OFF})
   endforeach()
 
   # Next create the test case targets. For each target
