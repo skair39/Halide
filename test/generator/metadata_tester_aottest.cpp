@@ -418,7 +418,7 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
         },
         {
-          "array_outputs0",
+          "array_outputs_0",
           halide_argument_kind_output_buffer,
           3,
           halide_type_t(halide_type_float, 32),
@@ -427,7 +427,7 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
         },
         {
-          "array_outputs1",
+          "array_outputs_1",
           halide_argument_kind_output_buffer,
           3,
           halide_type_t(halide_type_float, 32),

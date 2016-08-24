@@ -1,3 +1,4 @@
+#include <fstream>
 #include <set>
 
 #include "Generator.h"
@@ -116,6 +117,213 @@ Argument to_argument(const Internal::Parameter &param) {
         param.type(), param.dimensions(), def, min, max);
 }
 
+class WrapperEmitter {
+public:
+    WrapperEmitter(std::ostream &dest, 
+                   const std::string &fully_qualified_name,
+                   const std::vector<Internal::GeneratorParamBase *>& generator_params,
+                   const std::vector<Internal::GeneratorInputBase *>& inputs,
+                   const std::vector<Internal::GeneratorOutputBase *>& outputs) 
+        : stream(dest), fully_qualified_name(fully_qualified_name), generator_params(generator_params), 
+          inputs(inputs), outputs(outputs) {
+        internal_assert(!outputs.empty());
+    }
+
+    void emit();
+private:
+    std::ostream &stream;
+    const std::string fully_qualified_name;
+    const std::vector<Internal::GeneratorParamBase *> generator_params;
+    const std::vector<Internal::GeneratorInputBase *> inputs;
+    const std::vector<Internal::GeneratorOutputBase *> outputs;
+    int indent{0};
+
+    /** Emit spaces according to the current indentation level */
+    std::string ind() {
+        std::ostringstream o;
+        for (int i = 0; i < indent; i++) {
+            o << "  ";
+        }
+        return o.str();
+    }
+};
+
+void WrapperEmitter::emit() {
+    std::vector<std::string> namespaces = split_string(fully_qualified_name, "::");
+    internal_assert(namespaces.size() >= 2);
+    if (namespaces[0].empty()) {
+        // We have a name like ::foo::bar::baz; omit the first empty ns.
+        namespaces.erase(namespaces.begin());
+        internal_assert(namespaces.size() >= 2);
+    }
+    const std::string class_name = namespaces.back();
+    namespaces.pop_back();
+
+    struct OutputInfo {
+        std::string name;
+        std::string ctype;
+        std::string getter;
+    };
+    std::vector<OutputInfo> out_info;
+    for (auto output : outputs) {
+        out_info.push_back({
+            output->name(),
+            output->is_array() ? "std::vector<Halide::Func>" : "Halide::Func",
+            output->is_array() ? "get_output_vector" : "get_output"
+        });
+    }
+
+    std::ostringstream guard;
+    guard << "HALIDE_WRAPPER";
+    for (const auto &ns : namespaces) {
+        guard << "_" << ns;
+    }
+    guard << "_" << class_name;
+
+    stream << ind() << "#ifndef " << guard.str() << "\n";
+    stream << ind() << "#define " << guard.str() << "\n";
+    stream << "\n";
+
+    stream << ind() << "/* MACHINE-GENERATED - DO NOT EDIT */\n";
+    stream << "\n";
+
+    stream << ind() << "#include <cassert>\n";
+    stream << ind() << "#include <map>\n";
+    stream << ind() << "#include <memory>\n";
+    stream << ind() << "#include <string>\n";
+    stream << ind() << "#include <utility>\n";
+    stream << ind() << "#include <vector>\n";
+    stream << "\n";
+    stream << ind() << "#include \"Halide.h\"\n";
+    stream << "\n";
+
+    for (const auto &ns : namespaces) {
+        stream << ind() << "namespace " << ns << " {\n";
+    }
+    stream << "\n";
+
+    stream << ind() << "class " << class_name << " : public Halide::Internal::GeneratorWrapper {\n";
+    stream << ind() << "public:\n";
+    indent++;
+    stream << ind() << "struct GeneratorParams {\n";
+    indent++;
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        stream << ind() << p->get_c_type() << " " << p->name << "{ " << p->get_default_value() << " };\n";
+    }
+    stream << "\n";
+
+    stream << ind() << "GeneratorParams() {}\n";
+    stream << "\n";
+    stream << ind() << "std::map<std::string, std::string> to_map() const {\n";
+    indent++;
+    stream << ind() << "std::map<std::string, std::string> m;\n";
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        stream << ind() << "if (" << p->name << " != " << p->get_default_value() << ") "
+                        << "m[\"" << p->name << "\"] = " << p->call_to_string(p->name) << ";\n";
+    }
+    stream << ind() << "return m;\n";
+    indent--;
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "GeneratorParams(const GeneratorParams &) = delete;\n";
+    stream << ind() << "void operator=(const GeneratorParams &) = delete;\n";
+    indent--;
+    stream << ind() << "};\n";
+    stream << "\n";
+
+
+    stream << ind() << "// default ctor\n";
+    stream << ind() << class_name << "() {}\n";
+    stream << "\n";
+
+    stream << ind() << "// ctor with inputs\n";
+    stream << ind() << class_name << "(\n";
+    indent++;
+    stream << ind() << "const Halide::GeneratorContext &context,\n";
+    for (auto input : inputs) {
+        std::string type(input->kind() == InputKind::Function ? "Halide::Func" : "Halide::Expr");
+        stream << ind() << type << " " << input->name() << ",\n";
+    }
+    stream << ind() << "const GeneratorParams &params = GeneratorParams()\n";
+    indent--;
+    stream << ind() << ") : GeneratorWrapper(context, &factory, params.to_map(), { ";
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        if (i > 0) {
+            stream << ", ";
+        }
+        stream << inputs[i]->name();
+    }
+    stream << " }) {\n";
+    indent++;
+    for (const auto &out : out_info) {
+        stream << ind() << "*const_cast<" << out.ctype << "*>(&" << out.name << ") = " << out.getter << "(\"" << out.name << "\");\n";
+    }
+    indent--;
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "// move constructor\n";
+    stream << ind() << class_name << "("<< class_name << "&& that) : GeneratorWrapper(std::move(that)) {\n";
+    indent++;
+    for (const auto &out : out_info) {
+        stream << ind() << "*const_cast<" << out.ctype << "*>(&" << out.name << ") = "
+            << "std::move(*const_cast<" << out.ctype << "*>(&that." << out.name << "));\n";
+    }
+    indent--;
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "// move assignment operator\n";
+    stream << ind() << class_name << "& operator=("<< class_name << "&& that) {\n";
+    indent++;
+    stream << ind() << "GeneratorWrapper::operator=(std::move(that));\n";
+    for (const auto &out : out_info) {
+        stream << ind() << "*const_cast<" << out.ctype << "*>(&" << out.name << ") = "
+            << "std::move(*const_cast<" << out.ctype << "*>(&that." << out.name << "));\n";
+    }
+    stream << ind() << "return *this;\n";
+    indent--;
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "// Output(s)\n";
+    stream << ind() << "// TODO: identify vars used\n";
+    for (auto output : outputs) {
+        if (output->is_array()) {
+            stream << ind() << "const std::vector<Halide::Func> " << output->name() << ";\n";
+        } else {
+            stream << ind() << "const Halide::Func " << output->name() << ";\n";
+        }
+    }
+    stream << "\n";
+
+    indent--;
+    stream << ind() << "private:\n";
+    indent++;
+    stream << ind() << "static std::unique_ptr<Halide::Internal::GeneratorBase> factory(const std::map<std::string, std::string>& params) {\n";
+    indent++;
+    stream << ind() << "auto g = Halide::Internal::RegisterGeneratorAndWrapper<" << class_name << ">::create();\n";
+    stream << ind() << "g->set_generator_param_values(params);\n";
+    stream << ind() << "return g;\n";
+    indent--;
+    stream << ind() << "};\n";
+    stream << "\n";
+
+    indent--;
+    stream << ind() << "};\n";
+    stream << "\n";
+
+    for (int i = (int)namespaces.size() - 1; i >= 0 ; --i) {
+        stream << ind() << "}  // namespace " << namespaces[i] << "\n";
+    }
+    stream << "\n";
+
+    stream << ind() << "#endif  // " << guard.str() << "\n";
+}
+
 }  // namespace
 
 const std::map<std::string, Halide::Type> &get_halide_type_enum_map() {
@@ -133,11 +341,22 @@ const std::map<std::string, Halide::Type> &get_halide_type_enum_map() {
     return halide_type_enum_map;
 }
 
+std::string halide_type_to_enum_string(const Halide::Type & t) {
+    auto enum_map = get_halide_type_enum_map();
+    for (auto key_value : enum_map) {
+        if (t == key_value.second) {
+            return key_value.first;
+        }
+    }
+    user_error << "Type value not found: " << t;
+    return "";
+}
+
 int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
     const char kUsage[] = "gengen [-g GENERATOR_NAME] [-f FUNCTION_NAME] [-o OUTPUT_DIR] [-r RUNTIME_NAME] [-e EMIT_OPTIONS] [-x EXTENSION_OPTIONS] [-n FILE_BASE_NAME] "
                           "target=target-string[,target-string...] [generator_arg=value [...]]\n\n"
                           "  -e  A comma separated list of files to emit. Accepted values are "
-                          "[assembly, bitcode, cpp, h, html, o, static_library, stmt]. If omitted, default value is [static_library, h].\n"
+                          "[assembly, bitcode, cpp, h, html, o, static_library, stmt, wrapper]. If omitted, default value is [static_library, h].\n"
                           "  -x  A comma separated list of file extension pairs to substitute during file naming, "
                           "in the form [.old=.new[,.old2=.new2]]\n";
 
@@ -243,9 +462,11 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
                 emit_options.emit_h = true;
             } else if (opt == "static_library") {
                 emit_options.emit_static_library = true;
+            } else if (opt == "wrapper") {
+                emit_options.emit_wrapper = true;
             } else if (!opt.empty()) {
                 cerr << "Unrecognized emit option: " << opt
-                     << " not one of [assembly, bitcode, cpp, h, html, o, static_library, stmt], ignoring.\n";
+                     << " not one of [assembly, bitcode, cpp, h, html, o, static_library, stmt, wrapper], ignoring.\n";
             }
         }
     }
@@ -283,6 +504,20 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
 
     if (!generator_name.empty()) {
         std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
+        debug(1) << "Generator " << generator_name << " has base_path " << base_path << "\n";
+        if (emit_options.emit_wrapper) {
+            auto sub_generator_args = generator_args;
+            // TODO Target() doesn't roundtrip
+            sub_generator_args["target"] = Target(Target::OSUnknown, Target::ArchUnknown, 64).to_string();
+            auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
+            if (gen == nullptr) {
+                cerr << "Unknown generator: " << generator_name << "\n";
+                exit(1);
+            }
+            auto wrapper_file_path = base_path + get_extension(".wrapper.h", emit_options);
+            gen->emit_wrapper(wrapper_file_path);
+        }
+
         Outputs output_files = compute_outputs(targets[0], base_path, emit_options);
         auto module_producer = [&generator_name, &generator_args, &cerr]
             (const std::string &name, const Target &target) -> Module {
@@ -324,7 +559,9 @@ GeneratorRegistry &GeneratorRegistry::get_registry() {
 /* static */
 void GeneratorRegistry::register_factory(const std::string &name,
                                          std::unique_ptr<GeneratorFactory> factory) {
-    user_assert(is_valid_name(name)) << "Invalid Generator name: " << name;
+    for (auto name : split_string(name, "::")) {
+        user_assert(is_valid_name(name)) << "Invalid Generator name part: " << name;
+    }
     GeneratorRegistry &registry = get_registry();
     std::lock_guard<std::mutex> lock(registry.mutex);
     internal_assert(registry.factories.find(name) == registry.factories.end())
@@ -347,7 +584,7 @@ std::unique_ptr<GeneratorBase> GeneratorRegistry::create(const std::string &name
     GeneratorRegistry &registry = get_registry();
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.factories.find(name);
-    user_assert(it != registry.factories.end()) << "Generator not found: " << name;
+    user_assert(it != registry.factories.end()) << "Generator not found: " << name << "\n";
     return it->second->create(params);
 }
 
@@ -362,11 +599,14 @@ std::vector<std::string> GeneratorRegistry::enumerate() {
     return result;
 }
 
-GeneratorBase::GeneratorBase(size_t size, const void *introspection_helper) : size(size), params_built(false) {
+GeneratorBase::GeneratorBase(size_t size, const void *introspection_helper) 
+    : size(size) {
     ObjectInstanceRegistry::register_instance(this, size, ObjectInstanceRegistry::Generator, this, introspection_helper);
 }
 
-GeneratorBase::~GeneratorBase() { ObjectInstanceRegistry::unregister_instance(this); }
+GeneratorBase::~GeneratorBase() { 
+    ObjectInstanceRegistry::unregister_instance(this); 
+}
 
 void GeneratorBase::rebuild_params() {
     params_built = false;
@@ -433,12 +673,50 @@ void GeneratorBase::build_params() {
             auto param = static_cast<GeneratorParamBase *>(v);
             internal_assert(param != nullptr);
             user_assert(is_valid_name(param->name)) << "Invalid GeneratorParam name: " << param->name;
-            user_assert(generator_params.find(param->name) == generator_params.end())
-                << "Duplicate GeneratorParam name: " << param->name;
-            generator_params[param->name] = param;
+            user_assert(!names.count(param->name)) << "Duplicate GeneratorParam name: " << param->name;
+            generator_params.push_back(param);
         }
         params_built = true;
     }
+}
+
+Func GeneratorBase::get_first_output() {
+    build_params();
+    return get_output(filter_outputs[0]->name());
+}
+
+Func GeneratorBase::get_output(const std::string &n) {
+    user_assert(generate_called) << "Must call generate() before accessing Generator outputs."; 
+    // There usually are very few outputs, so a linear search is fine
+    build_params();
+    for (auto output : filter_outputs) {
+        if (output->name() == n) {
+            user_assert(!output->is_array() && output->funcs_.size() == 1) << "Output " << n << " must be accessed via get_output_vector()\n";
+            Func f = output->funcs_[0];
+            user_assert(f.defined()) << "Output " << n << " was not defined.\n";
+            return f;
+        }
+    }
+    internal_error << "Output " << n << " not found.\n";
+    return Func();
+}
+
+std::vector<Func> GeneratorBase::get_output_vector(const std::string &n) {
+    user_assert(generate_called) << "Must call generate() before accessing Generator outputs."; 
+    // There usually are very few outputs, so a linear search is fine
+    build_params();
+    for (auto output : filter_outputs) {
+        if (output->name() == n) {
+            // Actually, it's fine to access non-array outputs this way.
+            // internal_assert(output->is_array())  << "Output " << n << " must be accessed via get_output()";
+            for (const auto &f : output->funcs_) {
+                user_assert(f.defined()) << "Output " << n << " was not fully defined.\n";
+            }
+            return output->funcs_;
+        }
+    }
+    internal_error << "Output " << n << " not found.\n";
+    return {};
 }
 
 std::vector<Argument> GeneratorBase::get_filter_arguments() {
@@ -457,8 +735,7 @@ std::vector<Argument> GeneratorBase::get_filter_arguments() {
 GeneratorParamValues GeneratorBase::get_generator_param_values() {
     build_params();
     GeneratorParamValues results;
-    for (auto key_value : generator_params) {
-        GeneratorParamBase *param = key_value.second;
+    for (auto param : generator_params) {
         results[param->name] = param->to_string();
     }
     return results;
@@ -466,19 +743,37 @@ GeneratorParamValues GeneratorBase::get_generator_param_values() {
 
 void GeneratorBase::set_generator_param_values(const GeneratorParamValues &params) {
     build_params();
+    std::map<std::string, Internal::GeneratorParamBase *> m;
+    for (auto param : generator_params) {
+        m[param->name] = param;
+    }
     for (auto key_value : params) {
         const std::string &key = key_value.first;
         const std::string &value = key_value.second;
-        auto param = generator_params.find(key);
-        user_assert(param != generator_params.end())
-            << "Generator has no GeneratorParam named: " << key;
+        auto param = m.find(key);
+        user_assert(param != m.end()) << "Generator has no GeneratorParam named: " << key;
         param->second->from_string(value);
     }
 }
 
+void GeneratorBase::set_inputs(const std::vector<FuncOrExpr> &inputs) {
+    internal_assert(!inputs_set);
+    build_params();
+    user_assert(inputs.size() == filter_inputs.size()) 
+            << "Expected exactly " << filter_inputs.size() 
+            << " inputs but got " << inputs.size() << "\n";
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        filter_inputs[i]->init_internals(&inputs[i]);
+    }
+    inputs_set = true;
+}
+
 void GeneratorBase::init_inputs_and_outputs() {
-    for (auto input : filter_inputs) {
-        input->init_internals();
+    if (!inputs_set) {
+        for (auto input : filter_inputs) {
+            input->init_internals(nullptr);
+        }
+        inputs_set = true;
     }
     for (auto output : filter_outputs) {
         output->init_internals();
@@ -496,7 +791,8 @@ void GeneratorBase::pre_generate() {
     init_inputs_and_outputs();
 }
 
-Pipeline GeneratorBase::post_generate() {
+Pipeline GeneratorBase::produce_pipeline() {
+    user_assert(filter_outputs.size() > 0) << "Must use produce_pipeline<> with Output<>.";
     std::vector<Func> funcs;
     for (auto output : filter_outputs) {
         for (auto f : output->funcs_) {
@@ -544,16 +840,28 @@ Module GeneratorBase::build_module(const std::string &function_name,
     return pipeline.compile_to_module(get_filter_arguments(), function_name, target, linkage_type);
 }
 
+void GeneratorBase::emit_wrapper(const std::string &wrapper_file_path) {
+    user_assert(!wrapper_class_name.empty()) << "Generator has no wrapper class\n";
+    build_params();
+    std::ofstream file(wrapper_file_path);
+    WrapperEmitter emit(file, wrapper_class_name, generator_params, filter_inputs, filter_outputs);
+    emit.emit();
+}
+
 void GeneratorBase::emit_filter(const std::string &output_dir,
                                 const std::string &function_name,
                                 const std::string &file_base_name,
                                 const EmitOptions &options) {
     std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
+    if (options.emit_wrapper) {
+        auto wrapper_name = base_path + get_extension(".wrapper.h", options);
+        emit_wrapper(wrapper_name);
+    }
     compile_module_to_filter(build_module(function_name), base_path, options);
 }
 
-GeneratorInputBase::GeneratorInputBase(const std::string &n, Kind kind, const TypeArg &t, const DimensionArg &d) 
-    : parameter(t.value, /*is_buffer*/ kind == Function, d.value, n, /*is_explicit_name*/ true, /*register_instance*/ false), 
+GeneratorInputBase::GeneratorInputBase(const std::string &n, InputKind kind, const TypeArg &t, const DimensionArg &d) 
+    : kind_(kind), parameter(t.value, /*is_buffer*/ kind == InputKind::Function, d.value, n, /*is_explicit_name*/ true, /*register_instance*/ false), 
       type_param(t.param), dimension_param(d.param) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput,
                                               this, nullptr);
@@ -563,7 +871,7 @@ GeneratorInputBase::~GeneratorInputBase() {
     ObjectInstanceRegistry::unregister_instance(this); 
 }
 
-void GeneratorInputBase::init_internals() {
+void GeneratorInputBase::init_internals(const FuncOrExpr *input) {
     if (parameter.is_buffer()) {
         if (type_param && dimension_param) {
             parameter = Parameter(*type_param, /*is_buffer*/ true, *dimension_param, name(), true, false);
@@ -573,22 +881,54 @@ void GeneratorInputBase::init_internals() {
             parameter = Parameter(type(), /*is_buffer*/ true, *dimension_param, name(), true, false);
         }
         expr = Expr();
-        func = Func(name() + "_im");
-        std::vector<Var> args;
-        std::vector<Expr> args_expr;
-        for (int i = 0; i < parameter.dimensions(); ++i) {
-            args.push_back(Var::implicit(i));
-            args_expr.push_back(Var::implicit(i));
+        if (input) {
+            user_assert(input->kind == kind()) << "Input " << name() << " should be a Func but is an Expr.\n";
+            func = input->func;
+            user_assert(func.defined()) << "Input " << name() << " is not defined.\n";
+            user_assert(func.dimensions() == parameter.dimensions()) 
+                << "Expected dimensions " << parameter.dimensions() 
+                << " but got " << func.dimensions()
+                << " for Input<Func> " << name() << "\n";
+            user_assert(func.outputs() == 1)
+                << "Expected outputs() == " << 1 
+                << " but got " << func.outputs()
+                << " for Input<Func> " << name() << "\n";
+            user_assert(func.output_types().size() == 1)
+                << "Expected output_types().size() == " << 1 
+                << " but got " << func.outputs()
+                << " for Input<Func> " << name() << "\n";
+            user_assert(func.output_types()[0] == parameter.type()) 
+                << "Expected type " << parameter.type() 
+                << " but got " << func.output_types()[0] 
+                << " for Input<Func> " << name() << "\n";
+        } else {
+            func = Func(name() + "_im");
+            std::vector<Var> args;
+            std::vector<Expr> args_expr;
+            for (int i = 0; i < parameter.dimensions(); ++i) {
+                args.push_back(Var::implicit(i));
+                args_expr.push_back(Var::implicit(i));
+            }
+            func(args) = Internal::Call::make(parameter, args_expr);
         }
-        func(args) = Internal::Call::make(parameter, args_expr);
     } else {
-       expr = Internal::Variable::make(type(), name(), parameter);
-       func = Func();
+        func = Func();
+        if (input) {
+            user_assert(input->kind == kind()) << "Input " << name() << " should be an Expr but is a Func.\n";
+            expr = input->expr;
+            user_assert(expr.defined()) << "Input " << name() << " is not defined.\n";
+            user_assert(expr.type() == type())
+                << "Expected type " << type() 
+                << " but got " << expr.type()
+                << " for Input<Func> " << name() << "\n";
+        } else {
+            expr = Internal::Variable::make(type(), name(), parameter);
+        }
     }
 }
 
-GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &func_count, const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d) 
-    : name_(n), types_(t), dimensions_(d), func_count_(func_count) {
+GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &func_count, const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d, bool is_array) 
+    : name_(n), is_array_(is_array), types_(t), dimensions_(d), func_count_(func_count) {
     user_assert(func_count_.value >= 0) << "Output Arrays must have positive values";
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorOutput,
                                               this, nullptr);
@@ -615,8 +955,8 @@ void GeneratorOutputBase::init_internals() {
     funcs_.resize(func_count_.value);
     for (int i = 0; i < func_count_.value; ++i) {
         std::string n = name();
-        if (func_count_.value > 1) {
-            n += std::to_string(i);
+        if (is_array()) {
+            n += "_" + std::to_string(i);
         }
         funcs_[i] = Func(n);
     }
