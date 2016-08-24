@@ -884,7 +884,7 @@ $(BIN_DIR)/%.generator_lib.o: $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLU
 
 $(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/%.generator_lib.o
 	@mkdir -p $(BIN_DIR)
-	$(CXX) $^ $(TEST_LD_FLAGS) -o $@
+	$(CXX) $(filter %.o,$^) $(TEST_LD_FLAGS) -o $@
 
 NON_EMPTY_TARGET=$(if $(HL_TARGET),$(HL_TARGET),host)
 NAME_MANGLING_TARGET=$(NON_EMPTY_TARGET)-c_plus_plus_name_mangling
