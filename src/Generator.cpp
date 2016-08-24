@@ -674,6 +674,7 @@ void GeneratorBase::build_params() {
             internal_assert(param != nullptr);
             user_assert(is_valid_name(param->name)) << "Invalid GeneratorParam name: " << param->name;
             user_assert(!names.count(param->name)) << "Duplicate GeneratorParam name: " << param->name;
+            names.insert(param->name);
             generator_params.push_back(param);
         }
         params_built = true;
@@ -743,16 +744,16 @@ GeneratorParamValues GeneratorBase::get_generator_param_values() {
 
 void GeneratorBase::set_generator_param_values(const GeneratorParamValues &params) {
     build_params();
-    std::map<std::string, Internal::GeneratorParamBase *> m;
+    std::map<std::string, GeneratorParamBase *> m;
     for (auto param : generator_params) {
         m[param->name] = param;
     }
     for (auto key_value : params) {
         const std::string &key = key_value.first;
         const std::string &value = key_value.second;
-        auto param = m.find(key);
-        user_assert(param != m.end()) << "Generator has no GeneratorParam named: " << key;
-        param->second->from_string(value);
+        auto p = m.find(key);
+        user_assert(p != m.end()) << "Generator has no GeneratorParam named: " << key;
+        p->second->from_string(value);
     }
 }
 
