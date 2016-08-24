@@ -884,7 +884,7 @@ $(BIN_DIR)/%.generator_lib.o: $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLU
 
 $(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/%.generator_lib.o
 	@mkdir -p $(BIN_DIR)
-	$(CXX) $(filter %.o,$^) $(TEST_LD_FLAGS) -o $@
+	$(CXX) $(filter %.cpp %.o %.a,$^) $(TEST_LD_FLAGS) -o $@
 
 NON_EMPTY_TARGET=$(if $(HL_TARGET),$(HL_TARGET),host)
 NAME_MANGLING_TARGET=$(NON_EMPTY_TARGET)-c_plus_plus_name_mangling
@@ -988,26 +988,26 @@ $(FILTERS_DIR)/nested_externs_%.a: $(BIN_DIR)/nested_externs.generator
 	cd $(TMP_DIR); $(CURDIR)/$< -g nested_externs_$* -o $(CURDIR)/$(FILTERS_DIR) target=$(HL_TARGET)-no_runtime
 
 $(BIN_DIR)/generator_aot_nested_externs: $(ROOT_DIR)/test/generator/nested_externs_aottest.cpp $(FILTERS_DIR)/nested_externs_root.a $(FILTERS_DIR)/nested_externs_inner.a $(FILTERS_DIR)/nested_externs_combine.a $(FILTERS_DIR)/nested_externs_leaf.a $(INCLUDE_DIR)/HalideRuntime.h $(RUNTIMES_DIR)/runtime_$(HL_TARGET).a
-	$(CXX) $(TEST_CXX_FLAGS) $(filter-out %.h,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) -o $@
+	$(CXX) $(TEST_CXX_FLAGS) $(filter %.cpp %.o %.a,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) -o $@
 
 # By default, %_aottest.cpp depends on $(FILTERS_DIR)/%.a/.h (but not libHalide).
 $(BIN_DIR)/generator_aot_%: $(ROOT_DIR)/test/generator/%_aottest.cpp $(FILTERS_DIR)/%.a $(FILTERS_DIR)/%.h $(INCLUDE_DIR)/HalideRuntime.h $(RUNTIMES_DIR)/runtime_$(HL_TARGET).a
-	$(CXX) $(TEST_CXX_FLAGS) $(filter-out %.h,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) -o $@
+	$(CXX) $(TEST_CXX_FLAGS) $(filter %.cpp %.o %.a,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) -o $@
 
 $(BIN_DIR)/generator_aot_multitarget: $(ROOT_DIR)/test/generator/multitarget_aottest.cpp $(FILTERS_DIR)/multitarget.a $(FILTERS_DIR)/multitarget.h $(INCLUDE_DIR)/HalideRuntime.h $(RUNTIMES_DIR)/runtime_$(HL_TARGET).a
-	$(CXX) $(TEST_CXX_FLAGS) $(filter-out %.h,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) -o $@
+	$(CXX) $(TEST_CXX_FLAGS) $(filter %.cpp %.o %.a,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) -o $@
 
 # The matlab tests needs "-matlab" in the runtime
 $(BIN_DIR)/generator_aot_matlab: $(ROOT_DIR)/test/generator/matlab_aottest.cpp $(FILTERS_DIR)/matlab.a $(FILTERS_DIR)/matlab.h $(INCLUDE_DIR)/HalideRuntime.h $(RUNTIMES_DIR)/runtime_$(HL_TARGET)-matlab.a
-	$(CXX) $(TEST_CXX_FLAGS) $(filter-out %.h,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) $(TEST_LD_FLAGS) -o $@
+	$(CXX) $(TEST_CXX_FLAGS) $(filter %.cpp %.o %.a,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) $(TEST_LD_FLAGS) -o $@
 
 # acquire_release is the only test that explicitly uses CUDA/OpenCL APIs, so link only those here.
 $(BIN_DIR)/generator_aot_acquire_release: $(ROOT_DIR)/test/generator/acquire_release_aottest.cpp $(FILTERS_DIR)/acquire_release.a $(FILTERS_DIR)/acquire_release.h $(INCLUDE_DIR)/HalideRuntime.h $(RUNTIMES_DIR)/runtime_$(HL_TARGET).a
-	$(CXX) $(TEST_CXX_FLAGS) $(filter-out %.h,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) $(OPENCL_LD_FLAGS) $(CUDA_LD_FLAGS) -o $@
+	$(CXX) $(TEST_CXX_FLAGS) $(filter %.cpp %.o %.a,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support -I $(SRC_DIR)/runtime -I$(ROOT_DIR)/tools -lpthread $(LIBDL) $(OPENCL_LD_FLAGS) $(CUDA_LD_FLAGS) -o $@
 
 # By default, %_jittest.cpp depends on libHalide. These are external tests that use the JIT.
 $(BIN_DIR)/generator_jit_%: $(ROOT_DIR)/test/generator/%_jittest.cpp $(BIN_DIR)/libHalide.$(SHARED_EXT) $(INCLUDE_DIR)/Halide.h
-	$(CXX) -g $(TEST_CXX_FLAGS) $(filter-out %.h,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support $(TEST_LD_FLAGS) -o $@
+	$(CXX) -g $(TEST_CXX_FLAGS) $(filter %.cpp %.o %.a,$^) -I$(INCLUDE_DIR) -I$(FILTERS_DIR) -I $(ROOT_DIR)/apps/support $(TEST_LD_FLAGS) -o $@
 
 # generator_aot_multitarget is run multiple times, with different env vars.
 generator_aot_multitarget: $(BIN_DIR)/generator_aot_multitarget
