@@ -559,8 +559,8 @@ GeneratorRegistry &GeneratorRegistry::get_registry() {
 /* static */
 void GeneratorRegistry::register_factory(const std::string &name,
                                          std::unique_ptr<GeneratorFactory> factory) {
-    for (auto name : split_string(name, "::")) {
-        user_assert(is_valid_name(name)) << "Invalid Generator name part: " << name;
+    for (auto n : split_string(name, "::")) {
+        user_assert(is_valid_name(n)) << "Invalid Generator name part: " << n;
     }
     GeneratorRegistry &registry = get_registry();
     std::lock_guard<std::mutex> lock(registry.mutex);
