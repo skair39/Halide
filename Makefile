@@ -901,7 +901,7 @@ $(FILTERS_DIR)/%.h: $(FILTERS_DIR)/%.a
 $(FILTERS_DIR)/%.wrapper.h: $(BIN_DIR)/%.generator
 	@mkdir -p $(FILTERS_DIR)
 	@-mkdir -p $(TMP_DIR)
-	cd $(TMP_DIR); $(CURDIR)/$< -o $(CURDIR)/$(FILTERS_DIR) target=$(HL_TARGET) -e wrapper
+	cd $(TMP_DIR); $(CURDIR)/$< -o $(CURDIR)/$(FILTERS_DIR) -e wrapper
 
 # If we want to use a Generator with custom GeneratorParams, we need to write
 # custom rules: to pass the GeneratorParams, and to give a unique function and file name.

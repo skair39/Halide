@@ -427,11 +427,17 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
         cerr << kUsage;
         return 1;
     }
-    if (generator_args.find("target") == generator_args.end()) {
-        cerr << "Target missing\n";
-        cerr << kUsage;
-        return 1;
+
+    // It's ok to omit "target=" if we are generating *only* a wrapper
+    const std::vector<std::string> emit_flags = split_string(flags_info["-e"], ",");
+    if (!(emit_flags.size() == 1 && emit_flags[0] == "wrapper")) {
+        if (generator_args.find("target") == generator_args.end()) {
+            cerr << "Target missing\n";
+            cerr << kUsage;
+            return 1;
+        }
     }
+
     // it's OK for file_base_name to be empty: filename will be based on function name
     std::string file_base_name = flags_info["-n"];
 
@@ -439,7 +445,6 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
     // Ensure all flags start as false.
     emit_options.emit_static_library = emit_options.emit_h = false;
 
-    std::vector<std::string> emit_flags = split_string(flags_info["-e"], ",");
     if (emit_flags.empty() || (emit_flags.size() == 1 && emit_flags[0].empty())) {
         // If omitted or empty, assume .a and .h
         emit_options.emit_static_library = emit_options.emit_h = true;
@@ -506,10 +511,11 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
         std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
         debug(1) << "Generator " << generator_name << " has base_path " << base_path << "\n";
         if (emit_options.emit_wrapper) {
-            auto sub_generator_args = generator_args;
+            // When generating wrapper, we ignore all generator args passed in, and supply a fake Target.
+            std::map<std::string, std::string> wrapper_generator_args;
             // TODO Target() doesn't roundtrip
-            sub_generator_args["target"] = Target(Target::OSUnknown, Target::ArchUnknown, 64).to_string();
-            auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
+            wrapper_generator_args["target"] = Target(Target::OSUnknown, Target::ArchUnknown, 64).to_string();
+            auto gen = GeneratorRegistry::create(generator_name, wrapper_generator_args);
             if (gen == nullptr) {
                 cerr << "Unknown generator: " << generator_name << "\n";
                 exit(1);
