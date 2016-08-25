@@ -878,11 +878,11 @@ $(BIN_DIR)/renderscript_%: $(ROOT_DIR)/test/renderscript/%.cpp $(BIN_DIR)/libHal
 # By default, %.generator is produced by building %_generator.cpp
 # Note that the rule includes all _generator.cpp files, so that generators with define_extern
 # usage can just add deps later.
-$(BIN_DIR)/%.generator_lib.o: $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLUDE_DIR)/Halide.h
+$(BIN_DIR)/%_generator.o: $(ROOT_DIR)/test/generator/%_generator.cpp $(INCLUDE_DIR)/Halide.h
 	@mkdir -p $(BIN_DIR)
 	$(CXX) $(TEST_CXX_FLAGS) -I$(INCLUDE_DIR) -I$(CURDIR)/$(FILTERS_DIR) -c $< -o $@
 
-$(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/%.generator_lib.o
+$(BIN_DIR)/%.generator: $(BIN_DIR)/GenGen.o $(BIN_DIR)/libHalide.$(SHARED_EXT) $(BIN_DIR)/%_generator.o
 	@mkdir -p $(BIN_DIR)
 	$(CXX) $(filter %.cpp %.o %.a,$^) $(TEST_LD_FLAGS) -o $@
 
@@ -972,10 +972,10 @@ $(BIN_DIR)/generator_aot_tiled_blur: $(FILTERS_DIR)/tiled_blur_blur.a
 $(BIN_DIR)/generator_aot_tiled_blur_interleaved: $(FILTERS_DIR)/tiled_blur_blur_interleaved.a
 $(BIN_DIR)/generator_aot_cxx_mangling_define_extern: $(FILTERS_DIR)/cxx_mangling.a
 
-$(BIN_DIR)/generator_jit_wraptest: $(FILTERS_DIR)/wraptest.wrapper.h $(BIN_DIR)/wraptest.generator_lib.o
+$(BIN_DIR)/generator_jit_wraptest: $(FILTERS_DIR)/wraptest.wrapper.h $(BIN_DIR)/wraptest_generator.o
 
-$(BIN_DIR)/wrap_user.generator_lib.o: $(FILTERS_DIR)/wraptest.wrapper.h
-$(BIN_DIR)/wrap_user.generator: $(BIN_DIR)/wraptest.generator_lib.o
+$(BIN_DIR)/wrap_user_generator.o: $(FILTERS_DIR)/wraptest.wrapper.h
+$(BIN_DIR)/wrap_user.generator: $(BIN_DIR)/wraptest_generator.o
 
 # Usually, it's considered best practice to have one Generator per
 # .cpp file, with the generator-name and filename matching;
