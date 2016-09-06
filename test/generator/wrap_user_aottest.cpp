@@ -1,9 +1,9 @@
 #include "HalideRuntime.h"
-#include "halide_image.h"
+#include "HalideBuffer.h"
 
 #include "wrap_user.h"
 
-using namespace Halide::Tools;
+using namespace Halide;
 
 const int kSize = 32;
 

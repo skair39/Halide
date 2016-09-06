@@ -2220,7 +2220,8 @@ private:
             // min(max(x, y), min(y, x)) -> min(x, y)
             expr = mutate(min(max_a->a, max_a->b));
         } else if (max_a &&
-                   equal(max_a->b, b)) {
+                   (equal(max_a->a, b) || equal(max_a->b, b))) {
+            // min(max(x, y), x) -> x
             // min(max(x, y), y) -> y
             expr = b;
         } else if (min_a &&
@@ -2582,7 +2583,8 @@ private:
             // max(min(x, y), max(y, x)) -> max(x, y)
             expr = mutate(max(min_a->a, min_a->b));
         } else if (min_a &&
-                   equal(min_a->b, b)) {
+                   (equal(min_a->a, b) || equal(min_a->b, b))) {
+            // max(min(x, y), x) -> x
             // max(min(x, y), y) -> y
             expr = b;
         } else if (max_a &&
@@ -5155,6 +5157,12 @@ void check_bounds() {
     check(min(2, x) - x, 2 - max(x, 2));
     check(max(2, x) - x, 2 - min(x, 2));
 
+    check(max(min(x, y), x), x);
+    check(max(min(x, y), y), y);
+    check(min(max(x, y), x), x);
+    check(min(max(x, y), y), y);
+    check(max(min(x, y), x) + y, x + y);
+
     check(max(min(max(x, y), z), y), max(min(x, z), y));
     check(max(min(z, max(x, y)), y), max(min(x, z), y));
     check(max(y, min(max(x, y), z)), max(min(x, z), y));
@@ -5898,9 +5906,9 @@ void simplify_test() {
 
     // Now check that an interleave of some collapsible loads collapses into a single dense load
     {
-        Expr load1 = Load::make(Float(32, 4), "buf", ramp(x, 2, 4), Buffer(), Parameter());
-        Expr load2 = Load::make(Float(32, 4), "buf", ramp(x+1, 2, 4), Buffer(), Parameter());
-        Expr load12 = Load::make(Float(32, 8), "buf", ramp(x, 1, 8), Buffer(), Parameter());
+        Expr load1 = Load::make(Float(32, 4), "buf", ramp(x, 2, 4), BufferPtr(), Parameter());
+        Expr load2 = Load::make(Float(32, 4), "buf", ramp(x+1, 2, 4), BufferPtr(), Parameter());
+        Expr load12 = Load::make(Float(32, 8), "buf", ramp(x, 1, 8), BufferPtr(), Parameter());
         check(interleave_vectors({load1, load2}), load12);
 
         // They don't collapse in the other order
@@ -5908,7 +5916,7 @@ void simplify_test() {
         check(e, e);
 
         // Or if the buffers are different
-        Expr load3 = Load::make(Float(32, 4), "buf2", ramp(x+1, 2, 4), Buffer(), Parameter());
+        Expr load3 = Load::make(Float(32, 4), "buf2", ramp(x+1, 2, 4), BufferPtr(), Parameter());
         e = interleave_vectors({load1, load3});
         check(e, e);
 
