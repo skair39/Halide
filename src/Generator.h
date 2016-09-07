@@ -681,20 +681,20 @@ public:
     GeneratorInputBase(const std::string &n, InputKind kind, const TypeArg &t, const DimensionArg &d);
     ~GeneratorInputBase();
 
-    std::string name() const { return parameter.name(); }
-    Type type() const { return parameter.type(); }
-    int dimensions() const { return parameter.dimensions(); }
+    std::string name() const { return parameter_.name(); }
+    Type type() const { return parameter_.type(); }
+    int dimensions() const { return parameter_.dimensions(); }
     InputKind kind() const { return kind_; }
 
 protected:
     friend class GeneratorBase;
 
     const InputKind kind_;
-    Internal::Parameter parameter;
-    Expr expr;
-    Func func;
-    const GeneratorParam<Type> * const type_param{nullptr};
-    const GeneratorParam<int> * const dimension_param{nullptr};
+    Internal::Parameter parameter_;
+    Expr expr_;
+    Func func_;
+    const GeneratorParam<Type> * const type_param_{nullptr};
+    const GeneratorParam<int> * const dimension_param_{nullptr};
 
     void init_internals(const FuncOrExpr *input);
 
@@ -728,9 +728,9 @@ public:
     template <typename T2 = T, typename if_arithmetic<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def, const T &min, const T &max)
         : GeneratorInputBase(n, Internal::InputKind::Scalar, type_of<T>(), 0) {
-        parameter.set_min_value(Expr(min));
-        parameter.set_max_value(Expr(max));
-        parameter.set_scalar<T>(def);
+        parameter_.set_min_value(Expr(min));
+        parameter_.set_max_value(Expr(max));
+        parameter_.set_scalar<T>(def);
     }
 
     /** Construct a scalar or handle Input of type T with the given name
@@ -738,7 +738,7 @@ public:
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def)
         : GeneratorInputBase(n, Internal::InputKind::Scalar, type_of<T>(), 0) {
-        parameter.set_scalar<T>(def);
+        parameter_.set_scalar<T>(def);
     }
 
     /** Construct a scalar or handle Input of type T with the given name. */
@@ -755,12 +755,12 @@ public:
     /** You can use this Input as an expression in a halide
      * function definition */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
-    operator Expr() const { return expr; }
+    operator Expr() const { return expr_; }
 
     /** Using an Input as the argument to an external stage treats it
      * as an Expr */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
-    operator ExternFuncArgument() const { return ExternFuncArgument(expr); }
+    operator ExternFuncArgument() const { return ExternFuncArgument(expr_); }
 
 
     /** Construct a Func Input the given name, type, and dimension. */
@@ -772,17 +772,17 @@ public:
     template <typename... Args,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(Args&&... args) const {
-        return func(std::forward<Args>(args)...);
+        return func_(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(std::vector<Expr> args) const {
-        return func(args);
+        return func_(args);
     }
 
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    operator class Func() const { return func; }
+    operator class Func() const { return func_; }
 
 private:
     explicit GeneratorInput(const GeneratorInput &) = delete;

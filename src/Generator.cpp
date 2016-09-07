@@ -734,7 +734,7 @@ std::vector<Argument> GeneratorBase::get_filter_arguments() {
         arguments.push_back(to_argument(*param));
     }
     for (auto input : filter_inputs) {
-        arguments.push_back(to_argument(input->parameter));
+        arguments.push_back(to_argument(input->parameter_));
     }
     return arguments;
 }
@@ -868,8 +868,8 @@ void GeneratorBase::emit_filter(const std::string &output_dir,
 }
 
 GeneratorInputBase::GeneratorInputBase(const std::string &n, InputKind kind, const TypeArg &t, const DimensionArg &d) 
-    : kind_(kind), parameter(t.value, /*is_buffer*/ kind == InputKind::Function, d.value, n, /*is_explicit_name*/ true, /*register_instance*/ false), 
-      type_param(t.param), dimension_param(d.param) {
+    : kind_(kind), parameter_(t.value, /*is_buffer*/ kind == InputKind::Function, d.value, n, /*is_explicit_name*/ true, /*register_instance*/ false), 
+      type_param_(t.param), dimension_param_(d.param) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput,
                                               this, nullptr);
 }
@@ -879,57 +879,57 @@ GeneratorInputBase::~GeneratorInputBase() {
 }
 
 void GeneratorInputBase::init_internals(const FuncOrExpr *input) {
-    if (parameter.is_buffer()) {
-        if (type_param && dimension_param) {
-            parameter = Parameter(*type_param, /*is_buffer*/ true, *dimension_param, name(), true, false);
-        } else if (type_param) {
-            parameter = Parameter(*type_param, /*is_buffer*/ true, parameter.dimensions(), name(), true, false);
-        } else if (dimension_param) {
-            parameter = Parameter(type(), /*is_buffer*/ true, *dimension_param, name(), true, false);
+    if (parameter_.is_buffer()) {
+        if (type_param_ && dimension_param_) {
+            parameter_ = Parameter(*type_param_, /*is_buffer*/ true, *dimension_param_, name(), true, false);
+        } else if (type_param_) {
+            parameter_ = Parameter(*type_param_, /*is_buffer*/ true, parameter_.dimensions(), name(), true, false);
+        } else if (dimension_param_) {
+            parameter_ = Parameter(type(), /*is_buffer*/ true, *dimension_param_, name(), true, false);
         }
-        expr = Expr();
+        expr_ = Expr();
         if (input) {
             user_assert(input->kind == kind()) << "Input " << name() << " should be a Func but is an Expr.\n";
-            func = input->func;
-            user_assert(func.defined()) << "Input " << name() << " is not defined.\n";
-            user_assert(func.dimensions() == parameter.dimensions()) 
-                << "Expected dimensions " << parameter.dimensions() 
-                << " but got " << func.dimensions()
+            func_ = input->func;
+            user_assert(func_.defined()) << "Input " << name() << " is not defined.\n";
+            user_assert(func_.dimensions() == parameter_.dimensions()) 
+                << "Expected dimensions " << parameter_.dimensions() 
+                << " but got " << func_.dimensions()
                 << " for Input<Func> " << name() << "\n";
-            user_assert(func.outputs() == 1)
+            user_assert(func_.outputs() == 1)
                 << "Expected outputs() == " << 1 
-                << " but got " << func.outputs()
+                << " but got " << func_.outputs()
                 << " for Input<Func> " << name() << "\n";
-            user_assert(func.output_types().size() == 1)
+            user_assert(func_.output_types().size() == 1)
                 << "Expected output_types().size() == " << 1 
-                << " but got " << func.outputs()
+                << " but got " << func_.outputs()
                 << " for Input<Func> " << name() << "\n";
-            user_assert(func.output_types()[0] == parameter.type()) 
-                << "Expected type " << parameter.type() 
-                << " but got " << func.output_types()[0] 
+            user_assert(func_.output_types()[0] == parameter_.type()) 
+                << "Expected type " << parameter_.type() 
+                << " but got " << func_.output_types()[0] 
                 << " for Input<Func> " << name() << "\n";
         } else {
-            func = Func(name() + "_im");
+            func_ = Func(name() + "_im");
             std::vector<Var> args;
             std::vector<Expr> args_expr;
-            for (int i = 0; i < parameter.dimensions(); ++i) {
+            for (int i = 0; i < parameter_.dimensions(); ++i) {
                 args.push_back(Var::implicit(i));
                 args_expr.push_back(Var::implicit(i));
             }
-            func(args) = Internal::Call::make(parameter, args_expr);
+            func_(args) = Internal::Call::make(parameter_, args_expr);
         }
     } else {
-        func = Func();
+        func_ = Func();
         if (input) {
             user_assert(input->kind == kind()) << "Input " << name() << " should be an Expr but is a Func.\n";
-            expr = input->expr;
-            user_assert(expr.defined()) << "Input " << name() << " is not defined.\n";
-            user_assert(expr.type() == type())
+            expr_ = input->expr;
+            user_assert(expr_.defined()) << "Input " << name() << " is not defined.\n";
+            user_assert(expr_.type() == type())
                 << "Expected type " << type() 
-                << " but got " << expr.type()
+                << " but got " << expr_.type()
                 << " for Input<Func> " << name() << "\n";
         } else {
-            expr = Internal::Variable::make(type(), name(), parameter);
+            expr_ = Internal::Variable::make(type(), name(), parameter_);
         }
     }
 }
