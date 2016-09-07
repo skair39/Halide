@@ -217,10 +217,9 @@ if (WITH_TEST_GENERATORS)
   halide_define_aot_test(mandelbrot)
   halide_define_aot_test(matlab)
   halide_define_aot_test(memory_profiler_mandelbrot)
-  halide_define_aot_test(pyramid)
   halide_define_aot_test(variable_num_threads)
 
-  # Tests that require nonstandard targets, namespaces, etc.
+  # Tests that require nonstandard targets, namespaces, args, etc.
   halide_define_aot_test(multitarget
                          GENERATOR_HALIDE_TARGET host-debug-c_plus_plus_name_mangling,host-c_plus_plus_name_mangling
                          GENERATED_FUNCTION HalideTest::multitarget)
@@ -235,12 +234,17 @@ if (WITH_TEST_GENERATORS)
                          GENERATOR_HALIDE_TARGET host-c_plus_plus_name_mangling
                          GENERATED_FUNCTION HalideTest::cxx_mangling)
 
+  halide_define_aot_test(pyramid
+                         GENERATOR_ARGS levels=10)
+
   # Tests that require additional dependencies
-  halide_define_aot_test(metadata_tester)
+  halide_define_aot_test(metadata_tester
+                         GENERATOR_ARGS input_type=uint8 input_dim=3 output_type=float32 output_dim=3 array_outputs_count=2)
   halide_add_aot_test_dependency(metadata_tester
                                  AOT_LIBRARY_TARGET metadata_tester_ucon
                                  GENERATED_FUNCTION metadata_tester_ucon
-                                 GENERATOR_HALIDE_TARGET host-user_context)
+                                 GENERATOR_HALIDE_TARGET host-user_context
+                                 GENERATOR_ARGS input_type=uint8 input_dim=3 output_type=float32 output_dim=3 array_outputs_count=2)
 
   halide_define_aot_test(tiled_blur)
   halide_add_aot_test_dependency(tiled_blur
