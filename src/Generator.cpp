@@ -271,13 +271,14 @@ void WrapperEmitter::emit() {
     stream << "\n";
 
     stream << ind() << "// move constructor\n";
-    stream << ind() << class_name << "("<< class_name << "&& that) : GeneratorWrapper(std::move(that)) {\n";
+    stream << ind() << class_name << "("<< class_name << "&& that)\n";
     indent++;
+    stream << ind() << ": GeneratorWrapper(std::move(that))\n";
     for (const auto &out : out_info) {
-        stream << ind() << "*const_cast<" << out.ctype << "*>(&" << out.name << ") = "
-            << "std::move(*const_cast<" << out.ctype << "*>(&that." << out.name << "));\n";
+        stream << ind() << ", " << out.name << "(std::move(that." << out.name << "))\n";
     }
     indent--;
+    stream << ind() << "{\n";
     stream << ind() << "}\n";
     stream << "\n";
 
