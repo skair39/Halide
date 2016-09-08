@@ -981,11 +981,11 @@ void GeneratorInputBase::init_internals() {
                 args.push_back(v);
                 args_expr.push_back(v);
             }
-            Func f = Func(name() + "_im");
+            Func f = Func(array_name(i) + "_im");
             f(args) = Internal::Call::make(parameters_[i], args_expr);
             values_.push_back(FuncOrExpr(f));
         } else {
-            Expr e = Internal::Variable::make(type(), name(), parameters_[i]);
+            Expr e = Internal::Variable::make(type(), array_name(i), parameters_[i]);
             values_.push_back(FuncOrExpr(e));
         }
     }

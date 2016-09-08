@@ -956,7 +956,7 @@ public:
         std::is_array<T2>::value &&
         std::is_same<TBase, Func>::value
     >::type * = nullptr>
-    Expr operator[](size_t i) const {
+    Func operator[](size_t i) const {
         return value_at(i).func();
     }
 
@@ -964,8 +964,8 @@ public:
         std::is_array<T2>::value &&
         std::is_scalar<TBase>::value
     >::type * = nullptr>
-    Func operator[](size_t i) const {
-        return value_at(i).func();
+    Expr operator[](size_t i) const {
+        return value_at(i).expr();
     }
 
 private:

@@ -45,8 +45,12 @@ public:
     void generate() {
         Var x, y, c;
 
+        // These should both be zero; they are here to exercise the operator[] overloads
+        Expr zero1 = array_input[1](x, y, c) - array_input[0](x, y, c);
+        Expr zero2 = array_i32[1] - array_i32[0];
+
         Func f1, f2;
-        f1(x, y, c) = cast(output_type, input(x, y, c) + (array_input[1](x, y, c) - array_input[0](x, y, c)));
+        f1(x, y, c) = cast(output_type, input(x, y, c) + zero1 + zero2);
         f2(x, y, c) = cast<float>(f1(x, y, c) + 1);
 
         output(x, y, c) = Tuple(f1(x, y, c), f2(x, y, c));
