@@ -667,6 +667,18 @@ public:
     }
 };
 
+template <typename T>
+std::vector<FuncOrExpr> to_func_or_expr_vector(const T &t) {
+    return { FuncOrExpr(t) };
+}
+
+template <typename T>
+std::vector<FuncOrExpr> to_func_or_expr_vector(const std::vector<T> &v) {
+    std::vector<FuncOrExpr> r;
+    for (auto f : v) r.push_back(f);
+    return r;
+}
+
 template<typename T>
 class ArgWithParam {
     T value_;
@@ -1255,7 +1267,7 @@ private:
         wrapper_class_name = n;
     }
 
-    EXPORT void set_inputs(const std::vector<FuncOrExpr> &inputs);
+    EXPORT void set_inputs(const std::vector<std::vector<FuncOrExpr>> &inputs);
 
     GeneratorBase(const GeneratorBase &) = delete;
     void operator=(const GeneratorBase &) = delete;
@@ -1535,7 +1547,7 @@ protected:
     GeneratorWrapper(const GeneratorContext &context,
             GeneratorFactory generator_factory,
             const std::map<std::string, std::string> &generator_params,
-            const std::vector<Internal::FuncOrExpr> &inputs) {
+            const std::vector<std::vector<Internal::FuncOrExpr>> &inputs) {
         generator__ = generator_factory(generator_params);
         generator__->target.set(context.get_target());
         generator__->set_inputs(inputs);

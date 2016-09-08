@@ -228,8 +228,8 @@ void WrapperEmitter::emit() {
     stream << ind() << "}\n";
     stream << "\n";
 
-    stream << ind() << "GeneratorParams(const GeneratorParams &) = delete;\n";
-    stream << ind() << "void operator=(const GeneratorParams &) = delete;\n";
+    stream << ind() << "GeneratorParams(const GeneratorParams&) = delete;\n";
+    stream << ind() << "void operator=(const GeneratorParams&) = delete;\n";
     indent--;
     stream << ind() << "};\n";
     stream << "\n";
@@ -242,20 +242,23 @@ void WrapperEmitter::emit() {
     stream << ind() << "// ctor with inputs\n";
     stream << ind() << class_name << "(\n";
     indent++;
-    stream << ind() << "const Halide::GeneratorContext &context,\n";
+    stream << ind() << "const Halide::GeneratorContext& context,\n";
     for (auto input : inputs) {
         std::string type(input->kind() == IOKind::Function ? "Halide::Func" : "Halide::Expr");
+        if (input->is_array()) {
+            type = "const std::vector<" + type + ">&";
+        }
         stream << ind() << type << " " << input->name() << ",\n";
     }
-    stream << ind() << "const GeneratorParams &params = GeneratorParams()\n";
+    stream << ind() << "const GeneratorParams& params = GeneratorParams()\n";
     indent--;
-    stream << ind() << ") : GeneratorWrapper(context, &factory, params.to_map(), { ";
+    stream << ind() << ") : GeneratorWrapper(context, &factory, params.to_map(), {\n";
+    indent++;
     for (size_t i = 0; i < inputs.size(); ++i) {
-        if (i > 0) {
-            stream << ", ";
-        }
-        stream << inputs[i]->name();
+        stream << ind() << "Halide::Internal::to_func_or_expr_vector(" << inputs[i]->name() << ")";
+        stream << ",\n";
     }
+    indent--;
     stream << " }) {\n";
     indent++;
     for (const auto &out : out_info) {
@@ -767,22 +770,15 @@ void GeneratorBase::set_generator_param_values(const GeneratorParamValues &param
     }
 }
 
-void GeneratorBase::set_inputs(const std::vector<FuncOrExpr> &inputs) {
+void GeneratorBase::set_inputs(const std::vector<std::vector<FuncOrExpr>> &inputs) {
     internal_assert(!inputs_set);
     build_params();
     user_assert(inputs.size() == filter_inputs.size()) 
             << "Expected exactly " << filter_inputs.size() 
             << " inputs but got " << inputs.size() << "\n";
-    size_t start = 0;
     for (size_t i = 0; i < filter_inputs.size(); ++i) {
-        auto f = filter_inputs[i];
-        size_t end = start + f->array_size();
-        user_assert(end <= inputs.size()) << "Expected at least " << end << " inputs but got only " << inputs.size() << "\n";
-        std::vector<FuncOrExpr> sub_range(inputs.begin() + start, inputs.begin() + end);
-        f->set_inputs(sub_range);
-        start = end;
+        filter_inputs[i]->set_inputs(inputs[i]);
     }
-    user_assert(start == inputs.size()) << "Expected exactly " << start << " inputs but got " << inputs.size() << "\n";
     inputs_set = true;
 }
 

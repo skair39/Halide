@@ -20,9 +20,11 @@ public:
         Wrapper::GeneratorParams gp;
         gp.input_type = input_type;
         gp.output_type = output_type;
+        // Override array_count to only expect 1 input and provide one output for g
+        gp.array_count = 1;
 
         Expr float_arg_expr(1.234f);
-        wrap = Wrapper(context(), input, float_arg_expr, int_arg, gp);
+        wrap = Wrapper(context(), { input }, float_arg_expr, { int_arg }, gp);
 
         const float kOffset = 2.f;
         output(x, y, c) = cast(output_type, wrap.f(x, y, c)[1] + kOffset);

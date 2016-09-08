@@ -6,20 +6,25 @@ class Wrappee : public Halide::Generator<Wrappee> {
 public:
     GeneratorParam<Type> input_type{ "input_type", UInt(8) };
     GeneratorParam<Type> output_type{ "output_type", Float(32) };
+    GeneratorParam<int> array_count{ "array_count", 2 };
 
-    Input<Func> input{ "input", input_type, 3 };
+    Input<Func[]> input{ array_count, "input", input_type, 3 };
     Input<float> float_arg{ "float_arg", 1.0f, 0.0f, 100.0f }; 
-    Input<int32_t> int_arg{ "int_arg", 1 };
+    Input<int32_t[]> int_arg{ array_count, "int_arg", 1 };
 
     Output<Func> f{"f", {input_type, output_type}, 3};
-    Output<Func> g{"g", Int(16), 2};
+    Output<Func[]> g{ array_count, "g", Int(16), 2};
 
     void generate() {
-        f(x, y, c) = Tuple(
-                input(x, y, c),
-                cast(output_type, input(x, y, c) * float_arg + int_arg));
+        assert(array_count >= 1);
 
-        g(x, y) = cast<int16_t>(input(x, y, 0));
+        f(x, y, c) = Tuple(
+                input[0](x, y, c),
+                cast(output_type, input[0](x, y, c) * float_arg + int_arg[0]));
+
+        for (int i = 0; i < array_count; ++i) {
+            g[i](x, y) = cast<int16_t>(input[i](x, y, 0) + int_arg[i]);
+        }
     }
 
     void schedule() {
