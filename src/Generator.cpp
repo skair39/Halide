@@ -252,19 +252,21 @@ void WrapperEmitter::emit() {
     }
     stream << ind() << "const GeneratorParams& params = GeneratorParams()\n";
     indent--;
-    stream << ind() << ") : GeneratorWrapper(context, &factory, params.to_map(), {\n";
+    stream << ind() << ")\n";
+    indent++;
+    stream << ind() << ": GeneratorWrapper(context, &factory, params.to_map(), {\n";
     indent++;
     for (size_t i = 0; i < inputs.size(); ++i) {
         stream << ind() << "Halide::Internal::to_func_or_expr_vector(" << inputs[i]->name() << ")";
         stream << ",\n";
     }
     indent--;
-    stream << " }) {\n";
-    indent++;
+    stream << ind() << " })\n";
     for (const auto &out : out_info) {
-        stream << ind() << "*const_cast<" << out.ctype << "*>(&" << out.name << ") = " << out.getter << "(\"" << out.name << "\");\n";
+        stream << ind() << ", " << out.name << "(" << out.getter << "(\"" << out.name << "\"))\n";
     }
     indent--;
+    stream << ind() << "{\n";
     stream << ind() << "}\n";
     stream << "\n";
 
