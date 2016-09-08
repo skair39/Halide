@@ -391,6 +391,96 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
         },
         {
+          "array_input_0",
+          halide_argument_kind_input_buffer,
+          3,
+          halide_type_t(halide_type_uint, 8),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_input_1",
+          halide_argument_kind_input_buffer,
+          3,
+          halide_type_t(halide_type_uint, 8),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_i8_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 8),
+          make_scalar<int8_t>(0),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_i8_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 8),
+          make_scalar<int8_t>(0),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_i16_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 16),
+          make_scalar<int16_t>(16),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_i16_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 16),
+          make_scalar<int16_t>(16),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_i32_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 32),
+          make_scalar<int32_t>(32),
+          make_scalar<int32_t>(-32),
+          make_scalar<int32_t>(127),
+        },
+        {
+          "array_i32_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 32),
+          make_scalar<int32_t>(32),
+          make_scalar<int32_t>(-32),
+          make_scalar<int32_t>(127),
+        },
+        {
+          "array_h_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_handle, 64),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_h_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_handle, 64),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
           "output.0",
           halide_argument_kind_output_buffer,
           3,
@@ -465,10 +555,22 @@ int main(int argc, char **argv) {
     Image<float> output_scalar(1);  // Image doesn't allow for zero-dimensional buffers
     Image<float> output_array[2] = {{kSize, kSize, 3}, {kSize, kSize, 3}};
 
-    result = metadata_tester(input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, output0, output1, output_scalar, output_array[0], output_array[1]);
+    result = metadata_tester(input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, 
+                                  input, input, // Input<Func[]>
+                                  0, 0, // Input<int8_t[]>
+                                  0, 0, // Input<int16_t[]>
+                                  0, 0, // Input<int32_t[]>
+                                  nullptr, nullptr, // Input<void*[]>
+                             output0, output1, output_scalar, output_array[0], output_array[1]);
     EXPECT_EQ(0, result);
 
-    result = metadata_tester_ucon(user_context, input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, output0, output1, output_scalar, output_array[0], output_array[1]);
+    result = metadata_tester_ucon(user_context, input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, 
+                                  input, input, // Input<Func[]>
+                                  0, 0, // Input<int8_t[]>
+                                  0, 0, // Input<int16_t[]>
+                                  0, 0, // Input<int32_t[]>
+                                  nullptr, nullptr, // Input<void*[]>
+                                  output0, output1, output_scalar, output_array[0], output_array[1]);
     EXPECT_EQ(0, result);
 
     verify(input, output0, output1, output_scalar, output_array[0], output_array[1]);
