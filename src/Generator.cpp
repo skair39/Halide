@@ -244,7 +244,7 @@ void WrapperEmitter::emit() {
     indent++;
     stream << ind() << "const Halide::GeneratorContext &context,\n";
     for (auto input : inputs) {
-        std::string type(input->kind() == InputKind::Function ? "Halide::Func" : "Halide::Expr");
+        std::string type(input->kind() == IOKind::Function ? "Halide::Func" : "Halide::Expr");
         stream << ind() << type << " " << input->name() << ",\n";
     }
     stream << ind() << "const GeneratorParams &params = GeneratorParams()\n";
@@ -698,8 +698,8 @@ Func GeneratorBase::get_output(const std::string &n) {
     build_params();
     for (auto output : filter_outputs) {
         if (output->name() == n) {
-            user_assert(!output->is_array() && output->funcs_.size() == 1) << "Output " << n << " must be accessed via get_output_vector()\n";
-            Func f = output->funcs_[0];
+            user_assert(!output->is_array() && output->value_size() == 1) << "Output " << n << " must be accessed via get_output_vector()\n";
+            Func f = output->value().func();
             user_assert(f.defined()) << "Output " << n << " was not defined.\n";
             return f;
         }
@@ -716,10 +716,12 @@ std::vector<Func> GeneratorBase::get_output_vector(const std::string &n) {
         if (output->name() == n) {
             // Actually, it's fine to access non-array outputs this way.
             // internal_assert(output->is_array())  << "Output " << n << " must be accessed via get_output()";
-            for (const auto &f : output->funcs_) {
-                user_assert(f.defined()) << "Output " << n << " was not fully defined.\n";
+            std::vector<Func> funcs;
+            for (const auto &f : output->values_) {
+                user_assert(f.func().defined()) << "Output " << n << " was not fully defined.\n";
+                funcs.push_back(f.func());
             }
-            return output->funcs_;
+            return funcs;
         }
     }
     internal_error << "Output " << n << " not found.\n";
@@ -802,7 +804,8 @@ Pipeline GeneratorBase::produce_pipeline() {
     user_assert(filter_outputs.size() > 0) << "Must use produce_pipeline<> with Output<>.";
     std::vector<Func> funcs;
     for (auto output : filter_outputs) {
-        for (auto f : output->funcs_) {
+        for (const auto &v : output->values_) {
+            Func f = v.func();
             user_assert(f.defined()) << "Output \"" << f.name() << "\" was not defined.\n";
             user_assert(f.dimensions() == output->dimensions()) << "Output \"" << f.name() 
                 << "\" requires dimensions=" << output->dimensions() 
@@ -867,11 +870,61 @@ void GeneratorBase::emit_filter(const std::string &output_dir,
     compile_module_to_filter(build_module(function_name), base_path, options);
 }
 
-GeneratorInputBase::GeneratorInputBase(const std::string &n, InputKind kind, const TypeArg &t, const DimensionArg &d) 
-    : kind_(kind), parameter_(t.value, /*is_buffer*/ kind == InputKind::Function, d.value, n, /*is_explicit_name*/ true, /*register_instance*/ false), 
-      type_param_(t.param), dimension_param_(d.param) {
-    ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput,
-                                              this, nullptr);
+GIOBase::GIOBase(const ArraySizeArg &values_size, 
+                 const std::string &name, 
+                 IOKind kind,             
+                 const std::vector<TypeArg> &types,
+                 const DimensionArg &dimensions,
+                 bool is_array) 
+    : values_size_(values_size), name_(name), kind_(kind), types_(types), dimensions_(dimensions), is_array_(is_array) {
+    user_assert(values_size_.value() >= 0) << "Generator Input/Output Arrays must have positive size.";
+}
+
+GIOBase::~GIOBase() { 
+    // nothing
+}
+
+void GIOBase::verify_internals() const {
+    user_assert(values_size_.value() >= 0) << "Generator Input/Output Arrays must have positive values";
+    user_assert(dimensions_.value() >= 0) << "Output Dimensions must have positive values";
+
+    user_assert((size_t)values_size_.value() == values_.size());
+    for (const FuncOrExpr &v : values_) {
+        user_assert(v.kind() == kind()) << "Input " << name() << " is not of the expected type.\n";
+        if (kind() == IOKind::Function) {
+            Func f = v.func();
+            user_assert(f.defined()) << "Input " << name() << " is not defined.\n";
+            user_assert(f.dimensions() == dimensions()) 
+                << "Expected dimensions " << dimensions() 
+                << " but got " << f.dimensions()
+                << " for Input<Func> " << name() << "\n";
+            user_assert(f.outputs() == 1)
+                << "Expected outputs() == " << 1 
+                << " but got " << f.outputs()
+                << " for Input<Func> " << name() << "\n";
+            user_assert(f.output_types().size() == 1)
+                << "Expected output_types().size() == " << 1 
+                << " but got " << f.outputs()
+                << " for Input<Func> " << name() << "\n";
+            user_assert(f.output_types()[0] == type()) 
+                << "Expected type " << type() 
+                << " but got " << f.output_types()[0] 
+                << " for Input<Func> " << name() << "\n";
+        } else {
+            Expr e = v.expr();
+            user_assert(e.defined()) << "Input " << name() << " is not defined.\n";
+            user_assert(e.type() == type())
+                << "Expected type " << type() 
+                << " but got " << e.type()
+                << " for Input<Func> " << name() << "\n";
+        }
+    }
+}
+
+GeneratorInputBase::GeneratorInputBase(const std::string &name, IOKind kind, const TypeArg &t, const DimensionArg &d) 
+    : GIOBase(ArraySizeArg(1), name, kind, {t}, d, /*is_array*/ false),
+      parameter_(t.value(), /*is_buffer*/ kind == IOKind::Function, d.value(), name, true, false) {
+    ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput, this, nullptr);
 }
 
 GeneratorInputBase::~GeneratorInputBase() { 
@@ -879,64 +932,38 @@ GeneratorInputBase::~GeneratorInputBase() {
 }
 
 void GeneratorInputBase::init_internals(const FuncOrExpr *input) {
-    if (parameter_.is_buffer()) {
-        if (type_param_ && dimension_param_) {
-            parameter_ = Parameter(*type_param_, /*is_buffer*/ true, *dimension_param_, name(), true, false);
-        } else if (type_param_) {
-            parameter_ = Parameter(*type_param_, /*is_buffer*/ true, parameter_.dimensions(), name(), true, false);
-        } else if (dimension_param_) {
-            parameter_ = Parameter(type(), /*is_buffer*/ true, *dimension_param_, name(), true, false);
-        }
-        expr_ = Expr();
-        if (input) {
-            user_assert(input->kind == kind()) << "Input " << name() << " should be a Func but is an Expr.\n";
-            func_ = input->func;
-            user_assert(func_.defined()) << "Input " << name() << " is not defined.\n";
-            user_assert(func_.dimensions() == parameter_.dimensions()) 
-                << "Expected dimensions " << parameter_.dimensions() 
-                << " but got " << func_.dimensions()
-                << " for Input<Func> " << name() << "\n";
-            user_assert(func_.outputs() == 1)
-                << "Expected outputs() == " << 1 
-                << " but got " << func_.outputs()
-                << " for Input<Func> " << name() << "\n";
-            user_assert(func_.output_types().size() == 1)
-                << "Expected output_types().size() == " << 1 
-                << " but got " << func_.outputs()
-                << " for Input<Func> " << name() << "\n";
-            user_assert(func_.output_types()[0] == parameter_.type()) 
-                << "Expected type " << parameter_.type() 
-                << " but got " << func_.output_types()[0] 
-                << " for Input<Func> " << name() << "\n";
-        } else {
-            func_ = Func(name() + "_im");
+    if (kind() == IOKind::Function) {
+        // Only re-create the Parameter if we are a function (aka buffer): 
+        // for scalar parameters, re-creating would lose the def/min/max values.
+        // This is a little ugly.
+        parameter_ = Parameter(type(), kind() == IOKind::Function, dimensions(), name(), true, false);
+    }
+    values_.clear();
+    if (input) {
+        user_assert(input->kind() == kind()) << "Input " << name() << " is not of the expected type.\n";
+        values_.push_back(*input);
+    } else {
+        if (kind() == IOKind::Function) {
             std::vector<Var> args;
             std::vector<Expr> args_expr;
-            for (int i = 0; i < parameter_.dimensions(); ++i) {
+            for (int i = 0; i < dimensions(); ++i) {
                 args.push_back(Var::implicit(i));
                 args_expr.push_back(Var::implicit(i));
             }
-            func_(args) = Internal::Call::make(parameter_, args_expr);
-        }
-    } else {
-        func_ = Func();
-        if (input) {
-            user_assert(input->kind == kind()) << "Input " << name() << " should be an Expr but is a Func.\n";
-            expr_ = input->expr;
-            user_assert(expr_.defined()) << "Input " << name() << " is not defined.\n";
-            user_assert(expr_.type() == type())
-                << "Expected type " << type() 
-                << " but got " << expr_.type()
-                << " for Input<Func> " << name() << "\n";
+            Func f = Func(name() + "_im");
+            f(args) = Internal::Call::make(parameter_, args_expr);
+            values_.push_back(FuncOrExpr(f));
         } else {
-            expr_ = Internal::Variable::make(type(), name(), parameter_);
+            Expr e = Internal::Variable::make(type(), name(), parameter_);
+            values_.push_back(FuncOrExpr(e));
         }
     }
+    
+    verify_internals();
 }
 
-GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &func_count, const std::string &n, const std::vector<TypeArg> &t, const DimensionArg &d, bool is_array) 
-    : name_(n), is_array_(is_array), types_(t), dimensions_(d), func_count_(func_count) {
-    user_assert(func_count_.value >= 0) << "Output Arrays must have positive values";
+GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &count, const std::string &name, const std::vector<TypeArg> &t, const DimensionArg &d, bool is_array) 
+    : GIOBase(count, name, IOKind::Function, t, d, is_array) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorOutput,
                                               this, nullptr);
 }
@@ -946,26 +973,13 @@ GeneratorOutputBase::~GeneratorOutputBase() {
 }
 
 void GeneratorOutputBase::init_internals() {
-    for (size_t i = 0; i < types_.size(); ++i) {
-        if (types_[i].param) {
-            types_[i].value = *types_[i].param;
-        }
-    }
-    if (dimensions_.param) {
-        dimensions_.value = *dimensions_.param;
-    }
-    user_assert(dimensions_.value >= 0) << "Output Dimensions must have positive values";
-    if (func_count_.param) {
-        func_count_.value = *func_count_.param;
-    }
-    user_assert(func_count_.value >= 0) << "Output Arrays must have positive values";
-    funcs_.resize(func_count_.value);
-    for (int i = 0; i < func_count_.value; ++i) {
+    values_.clear();
+    for (int i = 0; i < values_size_.value(); ++i) {
         std::string n = name();
         if (is_array()) {
             n += "_" + std::to_string(i);
         }
-        funcs_[i] = Func(n);
+        values_.push_back(Func(n));
     }
 }
 

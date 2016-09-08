@@ -641,26 +641,43 @@ decltype(!(T)0) operator!(const GeneratorParam<T> &a) { return !(T)a; }
 
 namespace Internal {
 
-enum class InputKind { Scalar, Function };
+enum class IOKind { Scalar, Function };
 
-struct FuncOrExpr {
-    const InputKind kind;
-    const Halide::Func func;
-    const Halide::Expr expr;
-
+class FuncOrExpr {
+    IOKind kind_;
+    Halide::Func func_;
+    Halide::Expr expr_;
+public:
     // *not* explicit 
-    FuncOrExpr(const Halide::Func &f) : kind(InputKind::Function), func(f), expr(Expr()) {}
-    FuncOrExpr(const Halide::Expr &e) : kind(InputKind::Scalar), func(Func()), expr(e) {}
+    FuncOrExpr(const Func &f) : kind_(IOKind::Function), func_(f), expr_(Expr()) {}
+    FuncOrExpr(const Expr &e) : kind_(IOKind::Scalar), func_(Func()), expr_(e) {}
+
+    IOKind kind() const {
+        return kind_;
+    }
+
+    Func func() const {
+        internal_assert(kind_ == IOKind::Function) << "Expected Func, got Expr";
+        return func_;
+    }
+
+    Expr expr() const {
+        internal_assert(kind_ == IOKind::Scalar) << "Expected Expr, got Func";
+        return expr_;
+    }
 };
 
 template<typename T>
-struct ArgWithParam {
-    T value;
-    const GeneratorParam<T> * const param{nullptr};
+class ArgWithParam {
+    T value_;
+    const GeneratorParam<T> * const param_;
 
+public:
     // *not* explicit ctors
-    ArgWithParam(const T &value) : value(value), param(nullptr) {}
-    ArgWithParam(const GeneratorParam<T> &param) : value(param), param(&param) {}
+    ArgWithParam(const T &value) : value_(value), param_(nullptr) {}
+    ArgWithParam(const GeneratorParam<T> &param) : value_(param), param_(&param) {}
+
+    T value() const { return param_ ? *param_ : value_; }
 };
 
 template<typename T>
@@ -672,29 +689,71 @@ struct ArgWithParamVector {
     ArgWithParamVector(std::initializer_list<ArgWithParam<T>> t) : v(t) {}
 };
 
-class GeneratorInputBase {
+class GIOBase {
 protected:
     using TypeArg = Internal::ArgWithParam<Type>;
     using DimensionArg = Internal::ArgWithParam<int>;
-
+    using ArraySizeArg = Internal::ArgWithParam<int>;
 public:
-    GeneratorInputBase(const std::string &n, InputKind kind, const TypeArg &t, const DimensionArg &d);
-    ~GeneratorInputBase();
+    GIOBase(const ArraySizeArg &values_size, 
+            const std::string &name, 
+            IOKind kind,
+            const std::vector<TypeArg> &types,
+            const DimensionArg &dimensions,
+            bool is_array);
+    ~GIOBase();
 
-    std::string name() const { return parameter_.name(); }
-    Type type() const { return parameter_.type(); }
-    int dimensions() const { return parameter_.dimensions(); }
-    InputKind kind() const { return kind_; }
+    const std::string &name() const { return name_; }
+    IOKind kind() const { return kind_; }
+    size_t type_size() const { return types_.size(); }
+    Type type_at(size_t i) const { 
+        internal_assert(i < types_.size());
+        return types_.at(i).value(); 
+    }
+    Type type() const { 
+        internal_assert(type_size() == 1) << "Expected type_size() == 1, saw " << type_size() << " for " << name() << "\n";
+        return type_at(0); 
+    }
+    int dimensions() const { return dimensions_.value(); }
+    bool is_array() const { return is_array_; }
+
+    size_t value_size() const { return values_.size(); }
+    const FuncOrExpr &value_at(size_t i) const { 
+        internal_assert(i < values_.size());
+        return values_.at(i); 
+    }
+    const FuncOrExpr &value() const { 
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return value_at(0); 
+    }
 
 protected:
     friend class GeneratorBase;
 
-    const InputKind kind_;
+    ArraySizeArg values_size_;
+    const std::string name_;
+    const IOKind kind_;
+    std::vector<TypeArg> types_;
+    DimensionArg dimensions_;
+    const bool is_array_;
+    std::vector<FuncOrExpr> values_;
+
+    void verify_internals() const;
+
+private:
+    explicit GIOBase(const GIOBase &) = delete;
+    void operator=(const GIOBase &) = delete;
+};
+
+class GeneratorInputBase : public GIOBase {
+public:
+    GeneratorInputBase(const std::string &n, IOKind kind, const TypeArg &t, const DimensionArg &d);
+    ~GeneratorInputBase();
+
+protected:
+    friend class GeneratorBase;
+
     Internal::Parameter parameter_;
-    Expr expr_;
-    Func func_;
-    const GeneratorParam<Type> * const type_param_{nullptr};
-    const GeneratorParam<int> * const dimension_param_{nullptr};
 
     void init_internals(const FuncOrExpr *input);
 
@@ -727,7 +786,7 @@ public:
      * and default/min/max values. */
     template <typename T2 = T, typename if_arithmetic<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def, const T &min, const T &max)
-        : GeneratorInputBase(n, Internal::InputKind::Scalar, type_of<T>(), 0) {
+        : GeneratorInputBase(n, Internal::IOKind::Scalar, type_of<T>(), 0) {
         parameter_.set_min_value(Expr(min));
         parameter_.set_max_value(Expr(max));
         parameter_.set_scalar<T>(def);
@@ -737,7 +796,7 @@ public:
      * and default value. */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const T &def)
-        : GeneratorInputBase(n, Internal::InputKind::Scalar, type_of<T>(), 0) {
+        : GeneratorInputBase(n, Internal::IOKind::Scalar, type_of<T>(), 0) {
         parameter_.set_scalar<T>(def);
     }
 
@@ -755,34 +814,45 @@ public:
     /** You can use this Input as an expression in a halide
      * function definition */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
-    operator Expr() const { return expr_; }
+    operator Expr() const { 
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return value_at(0).expr(); 
+    }
 
     /** Using an Input as the argument to an external stage treats it
      * as an Expr */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
-    operator ExternFuncArgument() const { return ExternFuncArgument(expr_); }
+    operator ExternFuncArgument() const {
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return ExternFuncArgument(value_at(0).expr());
+    }
 
 
     /** Construct a Func Input the given name, type, and dimension. */
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
     GeneratorInput(const std::string &n, const TypeArg &t, const DimensionArg &d)
-        : GeneratorInputBase(n, Internal::InputKind::Function, t, d) {
+        : GeneratorInputBase(n, Internal::IOKind::Function, t, d) {
     }
 
     template <typename... Args,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(Args&&... args) const {
-        return func_(std::forward<Args>(args)...);
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return value_at(0).func()(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(std::vector<Expr> args) const {
-        return func_(args);
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return value_at(0).func()(args);
     }
 
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
-    operator class Func() const { return func_; }
+    operator class Func() const { 
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return value_at(0).func(); 
+    }
 
 private:
     explicit GeneratorInput(const GeneratorInput &) = delete;
@@ -791,33 +861,23 @@ private:
 
 namespace Internal {
 
-class GeneratorOutputBase {
-protected:
-    using TypeArg = Internal::ArgWithParam<Type>;
-    using DimensionArg = Internal::ArgWithParam<int>;
-    using ArraySizeArg = Internal::ArgWithParam<int>;
+class GeneratorOutputBase : public GIOBase {
 public:
-    /** Construct an Output of type T with the given name and kind. */
-    GeneratorOutputBase(const ArraySizeArg &func_count, const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d, bool is_array);
-    GeneratorOutputBase(const std::string &n, const std::vector<TypeArg> &t, const DimensionArg& d)
-      : GeneratorOutputBase(ArraySizeArg(1), n, t, d, /*is_array*/ false) {}
-    ~GeneratorOutputBase();
+    GeneratorOutputBase(const ArraySizeArg &count, 
+                        const std::string &name, 
+                        const std::vector<TypeArg> &t, 
+                        const DimensionArg& d, 
+                        bool is_array);
 
-    const std::string &name() const { return name_; }
-    size_t type_size() const { return types_.size(); }
-    Type type_at(size_t i) const { return types_.at(i).value; }
-    int dimensions() const { return dimensions_.value; }
-    bool is_array() const { return is_array_; }
+    GeneratorOutputBase(const std::string &name, 
+                        const std::vector<TypeArg> &t, 
+                        const DimensionArg& d)
+      : GeneratorOutputBase(ArraySizeArg(1), name, t, d, /*is_array*/ false) {}
+
+    ~GeneratorOutputBase();
 
 protected:
     friend class GeneratorBase;
-
-    const std::string name_;
-    const bool is_array_;
-    std::vector<TypeArg> types_;
-    DimensionArg dimensions_;
-    ArraySizeArg func_count_;
-    std::vector<Func> funcs_;
 
     void init_internals();
 
@@ -858,12 +918,12 @@ public:
         std::is_arithmetic<typename std::remove_all_extents<T2>::type>::value && 
         !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
-    GeneratorOutput(const ArraySizeArg &func_count, const std::string &n) 
-        : GeneratorOutputBase(func_count, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
+    GeneratorOutput(const ArraySizeArg &count, const std::string &n) 
+        : GeneratorOutputBase(count, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
     }
 
-    GeneratorOutput(const ArraySizeArg &func_count, const char *n) 
-        : GeneratorOutput(func_count, std::string(n)) {}
+    GeneratorOutput(const ArraySizeArg &count, const char *n) 
+        : GeneratorOutput(count, std::string(n)) {}
     // @}
 
     /** Construct an Output with the given name, type(s), and dimension. */
@@ -879,37 +939,36 @@ public:
         // Only allow Func
         std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
-    GeneratorOutput(const ArraySizeArg &func_count, const std::string &n, const TypeArgVector &t, const DimensionArg &d)
-        : GeneratorOutputBase(func_count, n, t.v, d, /*is_array*/ true) {
+    GeneratorOutput(const ArraySizeArg &count, const std::string &n, const TypeArgVector &t, const DimensionArg &d)
+        : GeneratorOutputBase(count, n, t.v, d, /*is_array*/ true) {
     }
 
     template <typename... Args, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
-        internal_assert(funcs_.size() == 1) << "Expected funcs_.size() == 1, saw " << funcs_.size() << " for " << name() << "\n";
-        return funcs_[0](std::forward<Args>(args)...);
+        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
+        return value().func()(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(std::vector<ExprOrVar> args) const {
-        internal_assert(funcs_.size() == 1);
-        return funcs_[0](args);
+        internal_assert(value_size() == 1);
+        return value().func()(args);
     }
 
     template <typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     operator class Func() const { 
-        internal_assert(funcs_.size() == 1);
-        return funcs_[0]; 
+        internal_assert(value_size() == 1);
+        return value().func(); 
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     size_t size() const {
-        return funcs_.size();
+        return value_size();
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     Func operator[](size_t i) const {
-        user_assert(i < funcs_.size());
-        return funcs_[i];
+        return value_at(i).func();
     }
 
 private:
