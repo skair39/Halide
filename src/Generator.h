@@ -947,6 +947,27 @@ public:
         return value_at(0).func(); 
     }
 
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    size_t size() const {
+        return value_size();
+    }
+
+    template <typename T2 = T, typename std::enable_if<
+        std::is_array<T2>::value &&
+        std::is_same<TBase, Func>::value
+    >::type * = nullptr>
+    Expr operator[](size_t i) const {
+        return value_at(i).func();
+    }
+
+    template <typename T2 = T, typename std::enable_if<
+        std::is_array<T2>::value &&
+        std::is_scalar<TBase>::value
+    >::type * = nullptr>
+    Func operator[](size_t i) const {
+        return value_at(i).func();
+    }
+
 private:
     explicit GeneratorInput(const GeneratorInput &) = delete;
     void operator=(const GeneratorInput &) = delete;
