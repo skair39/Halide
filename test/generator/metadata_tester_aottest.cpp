@@ -524,6 +524,42 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
           nullptr,
           nullptr,
+        },
+        {
+          "array_outputs2_0",
+          halide_argument_kind_output_buffer,
+          3,
+          halide_type_t(halide_type_float, 32),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_outputs2_1",
+          halide_argument_kind_output_buffer,
+          3,
+          halide_type_t(halide_type_float, 32),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_outputs3_0",
+          halide_argument_kind_output_buffer,
+          0,
+          halide_type_t(halide_type_float, 32),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array_outputs3_1",
+          halide_argument_kind_output_buffer,
+          0,
+          halide_type_t(halide_type_float, 32),
+          nullptr,
+          nullptr,
+          nullptr,
         }
     };
     const int kExpectedArgumentCount = (int)sizeof(kExpectedArguments) / sizeof(kExpectedArguments[0]);
@@ -554,6 +590,8 @@ int main(int argc, char **argv) {
     Image<float> output1(kSize, kSize, 3);
     Image<float> output_scalar(1);  // Image doesn't allow for zero-dimensional buffers
     Image<float> output_array[2] = {{kSize, kSize, 3}, {kSize, kSize, 3}};
+    Image<float> output_array2[2] = {{kSize, kSize, 3}, {kSize, kSize, 3}};
+    Image<float> output_array3[2] = {{1}, {1}};
 
     result = metadata_tester(
         input,             // Input<Func>
@@ -576,7 +614,10 @@ int main(int argc, char **argv) {
         nullptr, nullptr,  // Input<void*[]>
         output0, output1,  // Output<Tuple(Func, Func)>
         output_scalar,     // Output<float>
-        output_array[0], output_array[1]);  // Output<Func[]>
+        output_array[0], output_array[1],   // Output<Func[]>
+        output_array2[0], output_array2[1], // Output<Func[2]>
+        output_array3[0], output_array3[1]  // Output<float[2]>
+    );  
     EXPECT_EQ(0, result);
 
     result = metadata_tester_ucon(
@@ -601,7 +642,10 @@ int main(int argc, char **argv) {
         nullptr, nullptr,  // Input<void*[]>
         output0, output1,  // Output<Tuple(Func, Func)>
         output_scalar,     // Output<float>
-        output_array[0], output_array[1]);  // Output<Func[]>
+        output_array[0], output_array[1],    // Output<Func[]>
+        output_array2[0], output_array2[1], // Output<Func[2]>
+        output_array3[0], output_array3[1]  // Output<float[2]>
+    );
     EXPECT_EQ(0, result);
 
     verify(input, output0, output1, output_scalar, output_array[0], output_array[1]);

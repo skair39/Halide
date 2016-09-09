@@ -34,12 +34,18 @@ public:
     Input<int32_t[]> array_i32{ array_count, "array_i32", 32, -32, 127 };
     Input<void *[]> array_h{ array_count, "array_h", nullptr };
     // array count of 0 means there are no inputs: for AOT, doesn't affect C call signature
+    // (Note that we can't use Func[0] for this, as some compilers don't properly distinguish
+    // between T[] and T[0].)
     Input<Func[]> empty_inputs{ 0, "empty_inputs", Float(32), 3 };
 
     Output<Func> output{ "output", {output_type, Float(32)}, output_dim };
     Output<float> output_scalar{ "output_scalar" };
     Output<Func[]> array_outputs{ array_count, "array_outputs", Float(32), 3 };
-    // array count of 0 means there are no outputs: for AOT, doesn't affect C call signature
+    Output<Func[2]> array_outputs2{ "array_outputs2", Float(32), 3 };
+    Output<float[2]> array_outputs3{ "array_outputs3" };
+    // array count of 0 means there are no outputs: for AOT, doesn't affect C call signature.
+    // (Note that we can't use Func[0] for this, as some compilers don't properly distinguish
+    // between T[] and T[0].)
     Output<Func[]> empty_outputs{ 0, "empty_outputs", Float(32), 3 };
 
     void generate() {
@@ -57,6 +63,8 @@ public:
         output_scalar() = 1234.25f;
         for (size_t i = 0; i < array_outputs.size(); ++i) {
             array_outputs[i](x, y, c) = (i + 1) * 1.5f;
+            array_outputs2[i](x, y, c) = (i + 1) * 1.5f;
+            array_outputs3[i]() = 42.f;
         }
     }
 

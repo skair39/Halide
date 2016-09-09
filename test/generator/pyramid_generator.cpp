@@ -8,18 +8,18 @@ public:
 
     Input<Func> input{ "input", Float(32), 2 };
 
-    Output<Func[]> pyramid{ levels, "pyramid", Float(32), 2 }; 
+    Output<Func[10]> pyramid{ "pyramid", Float(32), 2 }; 
 
     void generate() {
         pyramid[0](x, y) = input(x, y);
 
-        for (int i = 1; i < levels; i++) {
+        for (size_t i = 1; i < pyramid.size(); i++) {
             pyramid[i](x, y) = downsample(pyramid[i-1])(x, y);
         }
     }
 
     void schedule() {
-        for (int i = 0; i < levels; i++) {
+        for (size_t i = 0; i < pyramid.size(); i++) {
             // No need to specify compute_root() for outputs
             pyramid[i].parallel(y);
             // Vectorize if we're still wide enough at this level

@@ -1048,11 +1048,19 @@ public:
         !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
     GeneratorOutput(const ArraySizeArg &array_size, const std::string &n) 
-        : GeneratorOutputBase(array_size, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
+        : GeneratorOutputBase(array_size, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0, true) {
     }
 
-    GeneratorOutput(const ArraySizeArg &array_size, const char *n) 
-        : GeneratorOutput(array_size, std::string(n)) {}
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[kSomeConst]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
+        // Only allow scalar non-pointer types
+        std::is_arithmetic<typename std::remove_all_extents<T2>::type>::value && 
+        !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
+    >::type * = nullptr>
+    GeneratorOutput(const std::string &n) 
+        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0, true) {
+    }
     // @}
 
     /** Construct an Output with the given name, type(s), and dimension. */
@@ -1062,6 +1070,7 @@ public:
     }
 
     /** Construct an Array Output with the given name, type (Tuple), and dimension. */
+    // @{
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
@@ -1071,6 +1080,17 @@ public:
     GeneratorOutput(const ArraySizeArg &array_size, const std::string &n, const TypeArgVector &t, const DimensionArg &d)
         : GeneratorOutputBase(array_size, n, t.v, d, /*is_array*/ true) {
     }
+
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[kSomeConst]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
+        // Only allow Func
+        std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
+    >::type * = nullptr>
+    GeneratorOutput(const std::string &n, const TypeArgVector &t, const DimensionArg &d)
+        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), n, t.v, d, /*is_array*/ true) {
+    }
+    // @}
 
     template <typename... Args, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
