@@ -409,6 +409,24 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
         },
         {
+          "array2_input_0",
+          halide_argument_kind_input_buffer,
+          3,
+          halide_type_t(halide_type_uint, 8),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
+          "array2_input_1",
+          halide_argument_kind_input_buffer,
+          3,
+          halide_type_t(halide_type_uint, 8),
+          nullptr,
+          nullptr,
+          nullptr,
+        },
+        {
           "array_i8_0",
           halide_argument_kind_input_scalar,
           0,
@@ -419,6 +437,24 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
         },
         {
           "array_i8_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 8),
+          make_scalar<int8_t>(0),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array2_i8_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 8),
+          make_scalar<int8_t>(0),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array2_i8_1",
           halide_argument_kind_input_scalar,
           0,
           halide_type_t(halide_type_int, 8),
@@ -445,6 +481,24 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
           nullptr,
         },
         {
+          "array2_i16_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 16),
+          make_scalar<int16_t>(16),
+          nullptr,
+          nullptr,
+        },
+        {
+          "array2_i16_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 16),
+          make_scalar<int16_t>(16),
+          nullptr,
+          nullptr,
+        },
+        {
           "array_i32_0",
           halide_argument_kind_input_scalar,
           0,
@@ -455,6 +509,24 @@ void check_metadata(const halide_filter_metadata_t &md, bool expect_ucon_at_0) {
         },
         {
           "array_i32_1",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 32),
+          make_scalar<int32_t>(32),
+          make_scalar<int32_t>(-32),
+          make_scalar<int32_t>(127),
+        },
+        {
+          "array2_i32_0",
+          halide_argument_kind_input_scalar,
+          0,
+          halide_type_t(halide_type_int, 32),
+          make_scalar<int32_t>(32),
+          make_scalar<int32_t>(-32),
+          make_scalar<int32_t>(127),
+        },
+        {
+          "array2_i32_1",
           halide_argument_kind_input_scalar,
           0,
           halide_type_t(halide_type_int, 32),
@@ -608,9 +680,13 @@ int main(int argc, char **argv) {
         0.0,               // Input<double>
         nullptr,           // Input<void*>
         input, input,      // Input<Func[]>
+        input, input,      // Input<Func[2]>
         0, 0,              // Input<int8_t[]>
+        0, 0,              // Input<int8_t[2]>
         0, 0,              // Input<int16_t[]>
+        0, 0,              // Input<int16_t[2]>
         0, 0,              // Input<int32_t[]>
+        0, 0,              // Input<int32_t[2]>
         nullptr, nullptr,  // Input<void*[]>
         output0, output1,  // Output<Tuple(Func, Func)>
         output_scalar,     // Output<float>
@@ -636,9 +712,13 @@ int main(int argc, char **argv) {
         0.0,               // Input<double>
         nullptr,           // Input<void*>
         input, input,      // Input<Func[]>
+        input, input,      // Input<Func[2]>
         0, 0,              // Input<int8_t[]>
+        0, 0,              // Input<int8_t[2]>
         0, 0,              // Input<int16_t[]>
+        0, 0,              // Input<int16_t[2]>
         0, 0,              // Input<int32_t[]>
+        0, 0,              // Input<int32_t[2]>
         nullptr, nullptr,  // Input<void*[]>
         output0, output1,  // Output<Tuple(Func, Func)>
         output_scalar,     // Output<float>

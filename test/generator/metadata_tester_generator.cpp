@@ -29,9 +29,13 @@ public:
     Input<void *> h{ "h", nullptr };
 
     Input<Func[]> array_input{ array_count, "array_input", input_type, input_dim };
+    Input<Func[2]> array2_input{ "array2_input", input_type, input_dim };
     Input<int8_t[]> array_i8{ array_count, "array_i8" };
+    Input<int8_t[2]> array2_i8{ "array2_i8" };
     Input<int16_t[]> array_i16{ array_count, "array_i16", 16 };
+    Input<int16_t[2]> array2_i16{ "array2_i16", 16 };
     Input<int32_t[]> array_i32{ array_count, "array_i32", 32, -32, 127 };
+    Input<int32_t[2]> array2_i32{ "array2_i32", 32, -32, 127 };
     Input<void *[]> array_h{ array_count, "array_h", nullptr };
     // array count of 0 means there are no inputs: for AOT, doesn't affect C call signature
     // (Note that we can't use Func[0] for this, as some compilers don't properly distinguish

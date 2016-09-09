@@ -852,6 +852,7 @@ public:
 
     /** Construct a scalar Array Input of type T with the given name
      * and default/min/max values. */
+    // @{
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
@@ -860,6 +861,16 @@ public:
     GeneratorInput(const ArraySizeArg &array_size, const std::string &n, const TBase &def, const TBase &min, const TBase &max)
         : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def), min_(Expr(min)), max_(Expr(max)) {
     }
+
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[kSomeConst]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
+        std::is_arithmetic<TBase>::value
+    >::type * = nullptr>
+    GeneratorInput(const std::string &n, const TBase &def, const TBase &min, const TBase &max)
+        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def), min_(Expr(min)), max_(Expr(max)) {
+    }
+    // @}
 
     /** Construct a scalar or handle Input of type T with the given name
      * and default value. */
@@ -870,6 +881,7 @@ public:
 
     /** Construct a scalar or handle Array Input of type T with the given name
      * and default value. */
+    // @{
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
@@ -878,6 +890,15 @@ public:
     GeneratorInput(const ArraySizeArg &array_size, const std::string &n, const TBase &def)
         : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def) {
     }
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
+        std::is_scalar<TBase>::value
+    >::type * = nullptr>
+    GeneratorInput(const std::string &n, const TBase &def)
+        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def) {
+    }
+    // @}
 
     /** Construct a scalar or handle Input of type T with the given name and a default value of 0. */
     // @{
@@ -897,16 +918,24 @@ public:
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
         std::is_scalar<TBase>::value
     >::type * = nullptr>
-    explicit GeneratorInput(const ArraySizeArg &array_size, const std::string &n) 
+    GeneratorInput(const ArraySizeArg &array_size, const std::string &n) 
         : GeneratorInput(array_size, n, static_cast<TBase>(0)) {}
 
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
-        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
         std::is_scalar<TBase>::value
     >::type * = nullptr>
-    explicit GeneratorInput(const ArraySizeArg &array_size, const char *n) 
-        : GeneratorInput(array_size, std::string(n)) {}
+    explicit GeneratorInput(const std::string &n) 
+        : GeneratorInput(n, static_cast<TBase>(0)) {}
+
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[kSomeConst]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
+        std::is_scalar<TBase>::value
+    >::type * = nullptr>
+    explicit GeneratorInput(const char *n) 
+        : GeneratorInput(std::string(n)) {}
     // @}
 
     /** You can use this Input as an expression in a halide
@@ -933,6 +962,7 @@ public:
     }
 
     /** Construct a Func Array Input the given name, type, and dimension. */
+    // @{
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
@@ -941,6 +971,16 @@ public:
     GeneratorInput(const ArraySizeArg &array_size, const std::string &n, const TypeArg &t, const DimensionArg &d)
         : GeneratorInputBase(array_size, n, Internal::IOKind::Function, t, d, true) {
     }
+
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
+        std::is_same<TBase, Func>::value
+    >::type * = nullptr>
+    GeneratorInput(const std::string &n, const TypeArg &t, const DimensionArg &d)
+        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Function, t, d, true) {
+    }
+    // @}
 
     template <typename... Args,
               typename T2 = T, typename if_func<T2>::type * = nullptr>

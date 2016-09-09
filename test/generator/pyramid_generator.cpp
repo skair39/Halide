@@ -8,7 +8,7 @@ public:
 
     Input<Func> input{ "input", Float(32), 2 };
 
-    Output<Func[10]> pyramid{ "pyramid", Float(32), 2 }; 
+    Output<Func[]> pyramid{ levels, "pyramid", Float(32), 2 }; 
 
     void generate() {
         pyramid[0](x, y) = input(x, y);
