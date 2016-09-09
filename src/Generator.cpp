@@ -909,9 +909,8 @@ GIOBase::GIOBase(const ArraySizeArg &array_size,
                  const std::string &name, 
                  IOKind kind,             
                  const std::vector<TypeArg> &types,
-                 const DimensionArg &dimensions,
-                 bool is_array) 
-    : array_size_(array_size), is_array_(is_array), name_(name), kind_(kind), types_(types), dimensions_(dimensions) {
+                 const DimensionArg &dimensions) 
+    : array_size_(array_size), name_(name), kind_(kind), types_(types), dimensions_(dimensions) {
     user_assert(array_size_.value() >= 0) << "Generator Input/Output Arrays must have positive size.";
 }
 
@@ -969,9 +968,8 @@ GeneratorInputBase::GeneratorInputBase(const ArraySizeArg &array_size,
                                        const std::string &name, 
                                        IOKind kind, 
                                        const TypeArg &t, 
-                                       const DimensionArg &d,
-                                       bool is_array) 
-    : GIOBase(array_size, name, kind, {t}, d, is_array) {
+                                       const DimensionArg &d) 
+    : GIOBase(array_size, name, kind, {t}, d) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorInput, this, nullptr);
 }
 
@@ -1035,8 +1033,8 @@ void GeneratorInputBase::set_inputs(const std::vector<FuncOrExpr> &inputs) {
     verify_internals();
 }
 
-GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &array_size, const std::string &name, const std::vector<TypeArg> &t, const DimensionArg &d, bool is_array) 
-    : GIOBase(array_size, name, IOKind::Function, t, d, is_array) {
+GeneratorOutputBase::GeneratorOutputBase(const ArraySizeArg &array_size, const std::string &name, const std::vector<TypeArg> &t, const DimensionArg &d) 
+    : GIOBase(array_size, name, IOKind::Function, t, d) {
     ObjectInstanceRegistry::register_instance(this, 0, ObjectInstanceRegistry::GeneratorOutput,
                                               this, nullptr);
 }

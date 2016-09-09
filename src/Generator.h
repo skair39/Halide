@@ -714,12 +714,11 @@ public:
             const std::string &name, 
             IOKind kind,
             const std::vector<TypeArg> &types,
-            const DimensionArg &dimensions,
-            bool is_array);
+            const DimensionArg &dimensions);
     ~GIOBase();
 
     size_t array_size() const { return (size_t) array_size_.value(); }
-    bool is_array() const { return is_array_; }
+    virtual bool is_array() const { internal_error << "Unimplemented"; return false; }
 
     const std::string &name() const { return name_; }
     IOKind kind() const { return kind_; }
@@ -747,8 +746,7 @@ public:
 protected:
     friend class GeneratorBase;
 
-    ArraySizeArg array_size_;  // always 1 if is_array_ == false
-    const bool is_array_;
+    ArraySizeArg array_size_;  // always 1 if is_array() == false
 
     const std::string name_;
     const IOKind kind_;
@@ -771,11 +769,10 @@ public:
                        const std::string &name, 
                        IOKind kind, 
                        const TypeArg &t, 
-                       const DimensionArg &d,
-                       bool is_array);
+                       const DimensionArg &d);
 
     GeneratorInputBase(const std::string &name, IOKind kind, const TypeArg &t, const DimensionArg &d)
-      : GeneratorInputBase(ArraySizeArg(1), name, kind, t, d, /*is_array*/ false) {}
+      : GeneratorInputBase(ArraySizeArg(1), name, kind, t, d) {}
 
     ~GeneratorInputBase();
 
@@ -842,6 +839,10 @@ protected:
         set_def_min_max_impl();
     }
 
+    bool is_array() const override {
+        return std::is_array<T>::value;
+    }
+
 public:
     /** Construct a scalar Input of type T with the given name
      * and default/min/max values. */
@@ -859,7 +860,7 @@ public:
         std::is_arithmetic<TBase>::value
     >::type * = nullptr>
     GeneratorInput(const ArraySizeArg &array_size, const std::string &n, const TBase &def, const TBase &min, const TBase &max)
-        : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def), min_(Expr(min)), max_(Expr(max)) {
+        : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def), min_(Expr(min)), max_(Expr(max)) {
     }
 
     template <typename T2 = T, typename std::enable_if<
@@ -868,7 +869,7 @@ public:
         std::is_arithmetic<TBase>::value
     >::type * = nullptr>
     GeneratorInput(const std::string &n, const TBase &def, const TBase &min, const TBase &max)
-        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def), min_(Expr(min)), max_(Expr(max)) {
+        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def), min_(Expr(min)), max_(Expr(max)) {
     }
     // @}
 
@@ -888,7 +889,7 @@ public:
         std::is_scalar<TBase>::value
     >::type * = nullptr>
     GeneratorInput(const ArraySizeArg &array_size, const std::string &n, const TBase &def)
-        : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def) {
+        : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
     }
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
@@ -896,7 +897,7 @@ public:
         std::is_scalar<TBase>::value
     >::type * = nullptr>
     GeneratorInput(const std::string &n, const TBase &def)
-        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Scalar, type_of<TBase>(), 0, /*is_array*/ true), def_(def) {
+        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
     }
     // @}
 
@@ -969,7 +970,7 @@ public:
         std::is_same<TBase, Func>::value
     >::type * = nullptr>
     GeneratorInput(const ArraySizeArg &array_size, const std::string &n, const TypeArg &t, const DimensionArg &d)
-        : GeneratorInputBase(array_size, n, Internal::IOKind::Function, t, d, true) {
+        : GeneratorInputBase(array_size, n, Internal::IOKind::Function, t, d) {
     }
 
     template <typename T2 = T, typename std::enable_if<
@@ -978,7 +979,7 @@ public:
         std::is_same<TBase, Func>::value
     >::type * = nullptr>
     GeneratorInput(const std::string &n, const TypeArg &t, const DimensionArg &d)
-        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Function, t, d, true) {
+        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), n, Internal::IOKind::Function, t, d) {
     }
     // @}
 
@@ -1035,13 +1036,12 @@ public:
     GeneratorOutputBase(const ArraySizeArg &array_size, 
                         const std::string &name, 
                         const std::vector<TypeArg> &t, 
-                        const DimensionArg& d, 
-                        bool is_array);
+                        const DimensionArg& d);
 
     GeneratorOutputBase(const std::string &name, 
                         const std::vector<TypeArg> &t, 
                         const DimensionArg& d)
-      : GeneratorOutputBase(ArraySizeArg(1), name, t, d, /*is_array*/ false) {}
+      : GeneratorOutputBase(ArraySizeArg(1), name, t, d) {}
 
     ~GeneratorOutputBase();
 
@@ -1061,6 +1061,11 @@ template<typename T>
 class GeneratorOutput : public Internal::GeneratorOutputBase {
 private:
     using TypeArgVector = Internal::ArgWithParamVector<Type>;
+
+protected:
+    bool is_array() const override {
+        return std::is_array<T>::value;
+    }
 
 public:
     /** Construct a "scalar" Output of type T with the given name. */
@@ -1088,7 +1093,7 @@ public:
         !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
     GeneratorOutput(const ArraySizeArg &array_size, const std::string &n) 
-        : GeneratorOutputBase(array_size, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0, true) {
+        : GeneratorOutputBase(array_size, n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
     }
 
     template <typename T2 = T, typename std::enable_if<
@@ -1099,7 +1104,7 @@ public:
         !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
     GeneratorOutput(const std::string &n) 
-        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0, true) {
+        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), n, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
     }
     // @}
 
@@ -1118,7 +1123,7 @@ public:
         std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
     GeneratorOutput(const ArraySizeArg &array_size, const std::string &n, const TypeArgVector &t, const DimensionArg &d)
-        : GeneratorOutputBase(array_size, n, t.v, d, /*is_array*/ true) {
+        : GeneratorOutputBase(array_size, n, t.v, d) {
     }
 
     template <typename T2 = T, typename std::enable_if<
@@ -1128,7 +1133,7 @@ public:
         std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
     >::type * = nullptr>
     GeneratorOutput(const std::string &n, const TypeArgVector &t, const DimensionArg &d)
-        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), n, t.v, d, /*is_array*/ true) {
+        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), n, t.v, d) {
     }
     // @}
 
