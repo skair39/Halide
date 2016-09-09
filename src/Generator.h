@@ -679,6 +679,9 @@ std::vector<FuncOrExpr> to_func_or_expr_vector(const std::vector<T> &v) {
     return r;
 }
 
+void verify_same_funcs(Func a, Func b);
+void verify_same_funcs(const std::vector<Func>& a, const std::vector<Func>& b);
+
 template<typename T>
 class ArgWithParam {
     T value_;
@@ -1491,21 +1494,13 @@ public:
         return *this;
     }
 
+    Target get_target() const { return generator__->get_target(); }
+
     // schedule method
     // TODO: add ScheduleParams
     void schedule() {
         // TODO: set ScheduleParams
         generator__->call_schedule();
-    }
-
-    // Output(s)
-    // TODO: identify vars used
-    Func get_output(const std::string &n) { 
-        return generator__->get_output(n); 
-    }
-
-    std::vector<Func> get_output_vector(const std::string &n) { 
-        return generator__->get_output_vector(n); 
     }
 
     // Overloads for first output
@@ -1540,6 +1535,8 @@ public:
         get_first_output().realize(dst, get_target()); 
     }
 
+    virtual ~GeneratorWrapper() {}
+
 protected:
     typedef std::function<std::unique_ptr<GeneratorBase>(const std::map<std::string, std::string>&)> GeneratorFactory;
 
@@ -1562,14 +1559,29 @@ protected:
     //     : GeneratorWrapper(context, generator_factory, {std::forward<Args>(args)...}) {
     // }
 
+    // Output(s)
+    // TODO: identify vars used
+    Func get_output(const std::string &n) { 
+        return generator__->get_output(n); 
+    }
+
+    std::vector<Func> get_output_vector(const std::string &n) { 
+        return generator__->get_output_vector(n); 
+    }
+
+    bool has_generator() const { 
+        return generator__ != nullptr; 
+    }
+
 private:
     // Note that we use a trailing double-underscore for our fixed arg/member names;
     // since is_valid_name() forbids any double-underscores, this ensures we won't
     // collide with user-provided names for (e.g.) outputs.
     std::shared_ptr<GeneratorBase> generator__;
 
-    Target get_target() const { return generator__->get_target(); }
-    Func get_first_output() const { return generator__->get_first_output(); }
+    Func get_first_output() const { 
+        return generator__->get_first_output(); 
+    }
     void check_scheduled(const char* m) const { 
         user_assert(generator__->schedule_called) << "Must call schedule() before calling " << m << "()"; 
     }

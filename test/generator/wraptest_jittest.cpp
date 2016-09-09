@@ -83,11 +83,8 @@ int main(int argc, char **argv) {
     verify(src[0], 1.0f, 0, f0);
     verify(src[0], 1.234f, 33, f1);
 
-    // TODO: gen.g is declared const (so we can't accidentally assign to it), 
-    // but we also can't call non-const methods on it (e.g. realize(), or, well, most things). Fix.
     for (int i = 0; i < kArrayCount; ++i) {
-        Func gtmp = gen.g[i];
-        Halide::Realization g_realized = gtmp.realize(kSize, kSize);
+        Halide::Realization g_realized = gen.g[i].realize(kSize, kSize, gen.get_target());
         Image<int16_t> g0 = g_realized;
         verify(src[i], 1.0f, int_args[i], g0);
     }

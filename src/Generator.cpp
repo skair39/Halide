@@ -169,7 +169,7 @@ void WrapperEmitter::emit() {
         out_info.push_back({
             output->name(),
             output->is_array() ? "std::vector<Halide::Func>" : "Halide::Func",
-            output->is_array() ? "get_output_vector" : "get_output"
+            std::string(output->is_array() ? "get_output_vector" : "get_output") + "(\"" + output->name() + "\")"
         });
     }
 
@@ -202,7 +202,7 @@ void WrapperEmitter::emit() {
     }
     stream << "\n";
 
-    stream << ind() << "class " << class_name << " : public Halide::Internal::GeneratorWrapper {\n";
+    stream << ind() << "class " << class_name << " final : public Halide::Internal::GeneratorWrapper {\n";
     stream << ind() << "public:\n";
     indent++;
     stream << ind() << "struct GeneratorParams {\n";
@@ -263,7 +263,7 @@ void WrapperEmitter::emit() {
     indent--;
     stream << ind() << " })\n";
     for (const auto &out : out_info) {
-        stream << ind() << ", " << out.name << "(" << out.getter << "(\"" << out.name << "\"))\n";
+        stream << ind() << ", " << out.name << "(" << out.getter << ")\n";
     }
     indent--;
     stream << ind() << "{\n";
@@ -287,8 +287,7 @@ void WrapperEmitter::emit() {
     indent++;
     stream << ind() << "GeneratorWrapper::operator=(std::move(that));\n";
     for (const auto &out : out_info) {
-        stream << ind() << "*const_cast<" << out.ctype << "*>(&" << out.name << ") = "
-            << "std::move(*const_cast<" << out.ctype << "*>(&that." << out.name << "));\n";
+        stream << ind() << out.name << " = std::move(that." << out.name << ");\n";
     }
     stream << ind() << "return *this;\n";
     indent--;
@@ -299,12 +298,29 @@ void WrapperEmitter::emit() {
     stream << ind() << "// TODO: identify vars used\n";
     for (auto output : outputs) {
         if (output->is_array()) {
-            stream << ind() << "const std::vector<Halide::Func> " << output->name() << ";\n";
+            stream << ind() << "std::vector<Halide::Func> " << output->name() << ";\n";
         } else {
-            stream << ind() << "const Halide::Func " << output->name() << ";\n";
+            stream << ind() << "Halide::Func " << output->name() << ";\n";
         }
     }
     stream << "\n";
+
+    stream << ind() << "~" << class_name << "() { if (has_generator()) verify(); }\n";
+    stream << "\n";
+
+    indent--;
+    stream << ind() << "protected:\n";
+    indent++;
+    stream << ind() << "void verify() {\n";
+    indent++;
+    stream << ind() << "using Halide::Internal::verify_same_funcs;\n";
+    for (const auto &out : out_info) {
+        stream << ind() << "verify_same_funcs(" << out.name << ", " << out.getter << ");\n";
+    }
+    indent--;
+    stream << ind() << "}\n";
+    stream << "\n";
+
 
     indent--;
     stream << ind() << "private:\n";
@@ -331,6 +347,18 @@ void WrapperEmitter::emit() {
 }
 
 }  // namespace
+
+void verify_same_funcs(Func a, Func b) {
+    user_assert(a.function().get_contents().same_as(b.function().get_contents())) 
+        << "Expected Func " << a.name() << " and " << b.name() << " to match.\n";
+}
+
+void verify_same_funcs(const std::vector<Func>& a, const std::vector<Func>& b) {
+    user_assert(a.size() == b.size()) << "Mismatch in Function vector length.\n";
+    for (size_t i = 0; i < a.size(); ++i) {
+        verify_same_funcs(a[i], b[i]);
+    }
+}
 
 const std::map<std::string, Halide::Type> &get_halide_type_enum_map() {
     static const std::map<std::string, Halide::Type> halide_type_enum_map{
