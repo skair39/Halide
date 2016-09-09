@@ -547,8 +547,7 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
         if (emit_options.emit_wrapper) {
             // When generating wrapper, we ignore all generator args passed in, and supply a fake Target.
             std::map<std::string, std::string> wrapper_generator_args;
-            // TODO Target() doesn't roundtrip
-            wrapper_generator_args["target"] = Target(Target::OSUnknown, Target::ArchUnknown, 64).to_string();
+            wrapper_generator_args["target"] = Target().to_string();
             auto gen = GeneratorRegistry::create(generator_name, wrapper_generator_args);
             if (gen == nullptr) {
                 cerr << "Unknown generator: " << generator_name << "\n";
