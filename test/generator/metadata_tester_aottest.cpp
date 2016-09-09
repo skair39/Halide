@@ -555,22 +555,53 @@ int main(int argc, char **argv) {
     Image<float> output_scalar(1);  // Image doesn't allow for zero-dimensional buffers
     Image<float> output_array[2] = {{kSize, kSize, 3}, {kSize, kSize, 3}};
 
-    result = metadata_tester(input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, 
-                                  input, input, // Input<Func[]>
-                                  0, 0, // Input<int8_t[]>
-                                  0, 0, // Input<int16_t[]>
-                                  0, 0, // Input<int32_t[]>
-                                  nullptr, nullptr, // Input<void*[]>
-                             output0, output1, output_scalar, output_array[0], output_array[1]);
+    result = metadata_tester(
+        input,             // Input<Func>
+        false,             // Input<bool>
+        0,                 // Input<i8>
+        0,                 // Input<i16>
+        0,                 // Input<i32>
+        0,                 // Input<i64>
+        0,                 // Input<u8>
+        0,                 // Input<u16>
+        0,                 // Input<u32>
+        0,                 // Input<u64>
+        0.f,               // Input<float>
+        0.0,               // Input<double>
+        nullptr,           // Input<void*>
+        input, input,      // Input<Func[]>
+        0, 0,              // Input<int8_t[]>
+        0, 0,              // Input<int16_t[]>
+        0, 0,              // Input<int32_t[]>
+        nullptr, nullptr,  // Input<void*[]>
+        output0, output1,  // Output<Tuple(Func, Func)>
+        output_scalar,     // Output<float>
+        output_array[0], output_array[1]);  // Output<Func[]>
     EXPECT_EQ(0, result);
 
-    result = metadata_tester_ucon(user_context, input, false, 0, 0, 0, 0, 0, 0, 0, 0, 0.f, 0.0, nullptr, 
-                                  input, input, // Input<Func[]>
-                                  0, 0, // Input<int8_t[]>
-                                  0, 0, // Input<int16_t[]>
-                                  0, 0, // Input<int32_t[]>
-                                  nullptr, nullptr, // Input<void*[]>
-                                  output0, output1, output_scalar, output_array[0], output_array[1]);
+    result = metadata_tester_ucon(
+        user_context, 
+        input,             // Input<Func>
+        false,             // Input<bool>
+        0,                 // Input<i8>
+        0,                 // Input<i16>
+        0,                 // Input<i32>
+        0,                 // Input<i64>
+        0,                 // Input<u8>
+        0,                 // Input<u16>
+        0,                 // Input<u32>
+        0,                 // Input<u64>
+        0.f,               // Input<float>
+        0.0,               // Input<double>
+        nullptr,           // Input<void*>
+        input, input,      // Input<Func[]>
+        0, 0,              // Input<int8_t[]>
+        0, 0,              // Input<int16_t[]>
+        0, 0,              // Input<int32_t[]>
+        nullptr, nullptr,  // Input<void*[]>
+        output0, output1,  // Output<Tuple(Func, Func)>
+        output_scalar,     // Output<float>
+        output_array[0], output_array[1]);  // Output<Func[]>
     EXPECT_EQ(0, result);
 
     verify(input, output0, output1, output_scalar, output_array[0], output_array[1]);

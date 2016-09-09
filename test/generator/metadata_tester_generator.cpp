@@ -34,7 +34,7 @@ public:
     Input<int32_t[]> array_i32{ array_count, "array_i32", 32, -32, 127 };
     Input<void *[]> array_h{ array_count, "array_h", nullptr };
     // array count of 0 means there are no inputs: for AOT, doesn't affect C call signature
-    Output<Func[]> empty_inputs{ 0, "empty_inputs", Float(32), 3 };
+    Input<Func[]> empty_inputs{ 0, "empty_inputs", Float(32), 3 };
 
     Output<Func> output{ "output", {output_type, Float(32)}, output_dim };
     Output<float> output_scalar{ "output_scalar" };
