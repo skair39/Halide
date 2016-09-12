@@ -103,8 +103,34 @@ namespace Halide {
 
 namespace Internal {
 
+template <typename T>
+NO_INLINE std::string enum_to_string(const std::map<std::string, T> &enum_map, const T& t) {
+    for (auto key_value : enum_map) {
+        if (t == key_value.second) {
+            return key_value.first;
+        }
+    }
+    user_error << "Enumeration value not found.\n";
+    return "";
+}
+
+template <typename T>
+T enum_from_string(const std::map<std::string, T> &enum_map, const std::string& s) {
+    auto it = enum_map.find(s);
+    user_assert(it != enum_map.end()) << "Enumeration value not found: " << s << "\n";
+    return it->second;
+}
+
 EXPORT extern const std::map<std::string, Halide::Type> &get_halide_type_enum_map();
-EXPORT std::string halide_type_to_enum_string(const Type & t);
+inline std::string halide_type_to_enum_string(const Type &t) {
+    return enum_to_string(get_halide_type_enum_map(), t);
+}
+
+EXPORT extern Halide::LoopLevel get_halide_undefined_looplevel();
+EXPORT extern const std::map<std::string, Halide::LoopLevel> &get_halide_looplevel_enum_map();
+inline std::string halide_looplevel_to_enum_string(const LoopLevel &loop_level){
+    return enum_to_string(get_halide_looplevel_enum_map(), loop_level);
+}
 
 /** generate_filter_main() is a convenient wrapper for GeneratorRegistry::create() +
  * compile_to_files();
@@ -116,13 +142,20 @@ class GeneratorParamBase {
 public:
     EXPORT explicit GeneratorParamBase(const std::string &name);
     EXPORT virtual ~GeneratorParamBase();
+
+    const std::string name;
+
+protected:
+    friend class GeneratorBase;
+    friend class WrapperEmitter;
+
     virtual void from_string(const std::string &value_string) = 0;
     virtual std::string to_string() const = 0;
     virtual std::string call_to_string(const std::string &v) const = 0;
     virtual std::string get_default_value() const = 0;
     virtual std::string get_c_type() const = 0;
-
-    const std::string name;
+    virtual bool is_schedule_param() const { return false; }
+    virtual bool is_looplevel_param() const { return false; }
 
 private:
     explicit GeneratorParamBase(const GeneratorParamBase &) = delete;
@@ -215,6 +248,19 @@ public:
         value = new_value;
     }
 
+    operator T() const { return value; }
+    operator Expr() const { return Internal::make_const(type_of<T>(), value); }
+
+protected:
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    GeneratorParam(const std::string &name, const std::string &value_string)
+        : GeneratorParamBase(name), 
+          value(Internal::enum_from_string(Internal::get_halide_looplevel_enum_map(), value_string)),
+          def(value),
+          enum_map(Internal::get_halide_looplevel_enum_map()) {
+    }
+
     void from_string(const std::string &new_value_string) override {
         // delegate to a function that we can specialize based on the template argument
         set(from_string_impl(new_value_string));
@@ -240,13 +286,10 @@ public:
         return get_c_type_impl();
     }
 
-    operator T() const { return value; }
-    operator Expr() const { return Internal::make_const(type_of<T>(), value); }
-
 private:
     T value;
-    const T def, min, max;  // only for arithmetic types
-    const std::map<std::string, T> enum_map;  // only for enums
+    const T def, min, max;                      // only for arithmetic types
+    const std::map<std::string, T> enum_map;    // only for enum-like Types
 
     // Note that none of the string conversions are static:
     // the specializations for enum require access to enum_map
@@ -272,33 +315,24 @@ private:
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
     std::string get_c_type_impl() const {
-        internal_error << "Cannot get_c_type_impl() for GeneratorParam<Target>\n";
-        return "";
+        return "Halide::Target";
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
     std::string get_default_value_impl() const {
-        internal_error << "Cannot get_default_value_impl() for GeneratorParam<Target>\n";
-        return "";
+        return def.to_string();
     }
 
+    // string conversions: Type
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
     T from_string_impl(const std::string &s) const {
-        auto it = enum_map.find(s);
-        user_assert(it != enum_map.end()) << "Enumeration value not found: " << s;
-        return it->second;
+        return Internal::enum_from_string(enum_map, s);
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
     std::string to_string_impl(const T& t) const {
-        for (auto key_value : enum_map) {
-            if (t == key_value.second) {
-                return key_value.first;
-            }
-        }
-        user_error << "Type value not found: " << name;
-        return "";
+        return Internal::enum_to_string(enum_map, t);
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
@@ -344,7 +378,7 @@ private:
               typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
     std::string call_to_string_impl(const std::string &v) const {
         std::ostringstream oss;
-        oss << "std::to_string(" << v << ")";
+        oss << "(" << v << ") ? \"true\" : \"false\"";
         return oss.str();
     }
     template <typename T2 = T,
@@ -437,19 +471,11 @@ private:
     // string conversions: enum
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     T from_string_impl(const std::string &s) const {
-        auto it = enum_map.find(s);
-        user_assert(it != enum_map.end()) << "Enumeration value not found: " << s;
-        return it->second;
+        return Internal::enum_from_string(enum_map, s);
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string to_string_impl(const T& t) const {
-        for (auto key_value : enum_map) {
-            if (t == key_value.second) {
-                return key_value.first;
-            }
-        }
-        user_error << "Enumeration value not found: " << name << " = " << (int)t;
-        return "";
+        return Internal::enum_to_string(enum_map, t);
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string call_to_string_impl(const std::string &v) const {
@@ -466,9 +492,65 @@ private:
         return "\"" + to_string_impl(def) + "\"";
     }
 
+    // string conversions: LoopLevel
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    T from_string_impl(const std::string &s) const {
+        return Internal::enum_from_string(enum_map, s);
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    std::string to_string_impl(const T& t) const {
+        return Internal::enum_to_string(enum_map, t);
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    std::string call_to_string_impl(const std::string &v) const {
+        std::ostringstream oss;
+        oss << "Halide::Internal::halide_looplevel_to_enum_string(" << v << ")";
+        return oss.str();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    std::string get_c_type_impl() const {
+        return "Halide::LoopLevel";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    std::string get_default_value_impl() const {
+        if (def == Internal::get_halide_undefined_looplevel()) return "Halide::Internal::get_halide_undefined_looplevel()";
+        if (def.is_root()) return "Halide::LoopLevel::root()";
+        if (def.is_inline()) return "Halide::LoopLevel()";
+        user_error << "LoopLevel value not found.\n";
+        return "";
+    }
+
 private:
     explicit GeneratorParam(const GeneratorParam &) = delete;
     void operator=(const GeneratorParam &) = delete;
+};
+
+template <typename T> 
+class ScheduleParam : public GeneratorParam<T> {
+public:
+    explicit ScheduleParam(const char *name)
+        : GeneratorParam<T>(name) {}
+
+    explicit ScheduleParam(const std::string &name)
+        : GeneratorParam<T>(name) {}
+
+    ScheduleParam(const std::string &name, const T &value)
+        : GeneratorParam<T>(name, value) {}
+
+    ScheduleParam(const std::string &name, const T &value, const T &min, const T &max)
+        : GeneratorParam<T>(name, value, min, max) {}
+
+    ScheduleParam(const std::string &name, const std::string &value)
+        : GeneratorParam<T>(name, value) {}
+
+protected:
+    bool is_schedule_param() const override { return true; }
+    bool is_looplevel_param() const override { return std::is_same<T, LoopLevel>::value; }
 };
 
 /** Addition between GeneratorParam<T> and any type that supports operator+ with T.
@@ -1190,6 +1272,7 @@ protected:
     template <typename T> static Expr cast(Expr e) { return Halide::cast<T>(e); }
     static inline Expr cast(Halide::Type t, Expr e) { return Halide::cast(t, e); }
     template <typename T> using GeneratorParam = Halide::GeneratorParam<T>;
+    template <typename T> using ScheduleParam = Halide::ScheduleParam<T>;
     template <typename T = void, int D = 4> using Image = Halide::Image<T, D>;
     template <typename T> using Param = Halide::Param<T>;
     static inline Type Bool(int lanes = 1) { return Halide::Bool(lanes); }
@@ -1217,11 +1300,6 @@ class GeneratorWrapper;
 class SimpleGeneratorFactory;
 template <class T> class RegisterGeneratorAndWrapper;
 
-// Note that various sections of code rely on being able to iterate
-// through this in a predictable order; do not change to unordered_map (etc)
-// without considering that.
-using GeneratorParamValues = std::map<std::string, std::string>;
-
 class GeneratorBase : public NamesInterface, public GeneratorContext {
 public:
     GeneratorParam<Target> target{ "target", Halide::get_host_target() };
@@ -1244,8 +1322,9 @@ public:
 
     Target get_target() const override { return target; }
 
-    EXPORT GeneratorParamValues get_generator_param_values();
-    EXPORT void set_generator_param_values(const GeneratorParamValues &params);
+    EXPORT std::map<std::string, std::string> get_generator_param_values();
+    EXPORT void set_generator_param_values(const std::map<std::string, std::string> &params, 
+                                           const std::map<std::string, LoopLevel> &looplevel_params = {});
 
     EXPORT std::vector<Argument> get_filter_arguments();
     EXPORT std::vector<Argument> get_filter_output_types();
@@ -1344,7 +1423,7 @@ private:
 class GeneratorFactory {
 public:
     virtual ~GeneratorFactory() {}
-    virtual std::unique_ptr<GeneratorBase> create(const GeneratorParamValues &params) const = 0;
+    virtual std::unique_ptr<GeneratorBase> create(const std::map<std::string, std::string> &params) const = 0;
 };
 
 typedef std::unique_ptr<Internal::GeneratorBase> (*GeneratorCreateFunc)();
@@ -1356,7 +1435,7 @@ public:
         internal_assert(create_func != nullptr);
     }
 
-    std::unique_ptr<Internal::GeneratorBase> create(const Internal::GeneratorParamValues &params) const override {
+    std::unique_ptr<Internal::GeneratorBase> create(const std::map<std::string, std::string> &params) const override {
         auto g = create_func();
         internal_assert(g.get() != nullptr);
         g->set_wrapper_class_name(wrapper_class_name);
@@ -1375,7 +1454,7 @@ public:
     EXPORT static std::vector<std::string> enumerate();
     EXPORT static std::string get_wrapper_class_name(const std::string &name);
     EXPORT static std::unique_ptr<GeneratorBase> create(const std::string &name,
-                                                        const GeneratorParamValues &params);
+                                                        const std::map<std::string, std::string> &params);
 
 private:
     using GeneratorFactoryMap = std::map<const std::string, std::unique_ptr<GeneratorFactory>>;
@@ -1545,6 +1624,7 @@ public:
 
 namespace Internal {
 
+// TODO(srj): de-inline as needed
 class GeneratorWrapper {
 public:
     // default ctor
@@ -1563,8 +1643,10 @@ public:
 
     // schedule method
     // TODO: add ScheduleParams
-    void schedule() {
+    void schedule(const std::map<std::string, std::string> &schedule_params,
+                  const std::map<std::string, LoopLevel> &schedule_params_looplevels) {
         // TODO: set ScheduleParams
+        generator__->set_generator_param_values(schedule_params, schedule_params_looplevels);
         generator__->call_schedule();
     }
 

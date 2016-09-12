@@ -31,7 +31,8 @@ public:
     }
 
     void schedule() {
-        wrap.schedule();
+        const bool vectorize = true;
+        wrap.schedule({ vectorize, LoopLevel(output, Var("y")) });
     }
 
 private:

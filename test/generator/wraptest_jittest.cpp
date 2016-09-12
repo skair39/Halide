@@ -6,6 +6,8 @@ using Halide::Argument;
 using Halide::Expr;
 using Halide::Func;
 using Halide::Image;
+using Halide::LoopLevel;
+using Halide::Var;
 using WrapNS1::WrapNS2::Wrapper;
 
 const int kSize = 32;
@@ -73,14 +75,24 @@ int main(int argc, char **argv) {
     gp.input_type = Halide::Float(32);
     gp.output_type = Halide::Int(16);
     gp.array_count = kArrayCount;
+    gp.array_count = kArrayCount;
     Wrapper gen(context, { MakeFunc(src[0]), MakeFunc(src[1]) }, 1.234f, int_args_expr, gp);
 
-    gen.schedule();
+    Wrapper::ScheduleParams sp;
+    // This generator default intermediate_level to "undefined", 
+    // so we *must* specify something for it (else we'll crater at
+    // Halide compile time). We'll use this:
+    sp.intermediate_level = LoopLevel(gen.f, Var("y"));
+    // ...but any of the following would also be OK:
+    // sp.intermediate_level = LoopLevel::root();
+    // sp.intermediate_level = LoopLevel(gen.f, Var("x"));
+    // sp.intermediate_level = LoopLevel(gen.f, Var("c"));
+    gen.schedule(sp);
 
     Halide::Realization f_realized = gen.realize(kSize, kSize, 3);
     Image<float> f0 = f_realized[0];
     Image<int16_t> f1 = f_realized[1];
-    verify(src[0], 1.0f, 0, f0);
+    verify(src[0], 1.234f, 0, f0);
     verify(src[0], 1.234f, 33, f1);
 
     for (int i = 0; i < kArrayCount; ++i) {

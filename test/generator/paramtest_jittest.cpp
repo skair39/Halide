@@ -6,7 +6,6 @@ using Halide::Argument;
 using Halide::Expr;
 using Halide::Func;
 using Halide::Image;
-using Halide::Internal::GeneratorParamValues;
 
 const int kSize = 32;
 
@@ -93,7 +92,7 @@ int main(int argc, char **argv) {
     // Test Generator::get_generator_param_values() and Generator::set_generator_param_values()
     {
         ParamTest gen;
-        GeneratorParamValues v = gen.get_generator_param_values();
+        auto v = gen.get_generator_param_values();
         if (v.size() != 6) {
             fprintf(stderr, "Wrong number of GeneratorParamValues %d\n", (int) v.size());
             exit(-1);

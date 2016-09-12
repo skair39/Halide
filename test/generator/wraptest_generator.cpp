@@ -2,11 +2,20 @@
 
 namespace {
 
+enum class SomeEnum { EnumA, EnumB };
+
 class Wrappee : public Halide::Generator<Wrappee> {
 public:
     GeneratorParam<Type> input_type{ "input_type", UInt(8) };
     GeneratorParam<Type> output_type{ "output_type", Float(32) };
     GeneratorParam<int> array_count{ "array_count", 2 };
+    GeneratorParam<SomeEnum> some_enum{ "some_enum",
+                                        SomeEnum::EnumA,
+                                        { { "enum_a", SomeEnum::EnumA },
+                                          { "enum_b", SomeEnum::EnumB } } };
+
+    ScheduleParam<bool> vectorize{ "vectorize", true };
+    ScheduleParam<LoopLevel> intermediate_level{ "intermediate_level", "undefined" };
 
     Input<Func[]> input{ array_count, "input", input_type, 3 };
     Input<float> float_arg{ "float_arg", 1.0f, 0.0f, 100.0f }; 
@@ -18,9 +27,13 @@ public:
     void generate() {
         assert(array_count >= 1);
 
+        // Gratuitous intermediate for the purpose of exercising
+        // ScheduleParam<LoopLevel>
+        intermediate(x, y, c) = input[0](x, y, c) * float_arg;
+
         f(x, y, c) = Tuple(
-                input[0](x, y, c),
-                cast(output_type, input[0](x, y, c) * float_arg + int_arg[0]));
+                intermediate(x, y, c),
+                cast(output_type, intermediate(x, y, c) + int_arg[0]));
 
         for (int i = 0; i < array_count; ++i) {
             g[i](x, y) = cast<int16_t>(input[i](x, y, 0) + int_arg[i]);
@@ -28,11 +41,14 @@ public:
     }
 
     void schedule() {
-        // empty
+        intermediate.compute_at(intermediate_level);
+        if (vectorize) intermediate.vectorize(x, natural_vector_size<float>());
     }
 
 private:
     Var x{"x"}, y{"y"}, c{"c"};
+
+    Func intermediate{"intermediate"};
 };
 
 }  // namespace

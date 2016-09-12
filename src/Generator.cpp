@@ -117,6 +117,8 @@ Argument to_argument(const Internal::Parameter &param) {
         param.type(), param.dimensions(), def, min, max);
 }
 
+}  // namespace
+
 class WrapperEmitter {
 public:
     WrapperEmitter(std::ostream &dest, 
@@ -139,14 +141,94 @@ private:
     int indent{0};
 
     /** Emit spaces according to the current indentation level */
-    std::string ind() {
-        std::ostringstream o;
-        for (int i = 0; i < indent; i++) {
-            o << "  ";
-        }
-        return o.str();
-    }
+    std::string ind();
+
+    void emit_params_struct(bool schedule_only);
 };
+
+std::string WrapperEmitter::ind() {
+    std::ostringstream o;
+    for (int i = 0; i < indent; i++) {
+        o << "  ";
+    }
+    return o.str();
+}
+
+void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
+    std::string name = is_schedule_params ? "ScheduleParams" : "GeneratorParams";
+    stream << ind() << "struct " << name << " {\n";
+    indent++;
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        if (is_schedule_params != p->is_schedule_param()) continue;
+        stream << ind() << p->get_c_type() << " " << p->name << "{ " << p->get_default_value() << " };\n";
+    }
+    stream << "\n";
+
+    stream << ind() << "// default ctor\n";
+    stream << ind() << name << "() {}\n";
+    stream << "\n";
+
+    stream << ind() << "// ctor with inputs\n";
+    stream << ind() << name << "(\n";
+    indent++;
+    std::string comma = "";
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        if (is_schedule_params != p->is_schedule_param()) continue;
+        stream << ind() << comma << p->get_c_type() << " " << p->name << "\n";
+        comma = ", ";
+    }
+    indent--;
+    stream << ind() << ") : \n";
+    indent++;
+    comma = "";
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        if (is_schedule_params != p->is_schedule_param()) continue;
+        stream << ind() << comma << p->name << "(" << p->name << ")\n";
+        comma = ", ";
+    }
+    indent--;
+    stream << ind() << "{\n";
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "NO_INLINE std::map<std::string, std::string> to_string_map() const {\n";
+    indent++;
+    stream << ind() << "std::map<std::string, std::string> m;\n";
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        if (is_schedule_params != p->is_schedule_param()) continue;
+        if (p->is_looplevel_param()) continue;
+        stream << ind() << "if (" << p->name << " != " << p->get_default_value() << ") "
+                        << "m[\"" << p->name << "\"] = " << p->call_to_string(p->name) << ";\n";
+    }
+    stream << ind() << "return m;\n";
+    indent--;
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    if (is_schedule_params) {
+        stream << ind() << "NO_INLINE std::map<std::string, Halide::LoopLevel> to_looplevel_map() const {\n";
+        indent++;
+        stream << ind() << "std::map<std::string, Halide::LoopLevel> m;\n";
+        for (auto p : generator_params) {
+            if (p->name == "target") continue;
+            if (!p->is_looplevel_param()) continue;
+            stream << ind() << "if (" << p->name << " != " << p->get_default_value() << ") "
+                            << "m[\"" << p->name << "\"] = " << p->name << ";\n";
+        }
+        stream << ind() << "return m;\n";
+        indent--;
+        stream << ind() << "}\n";
+        stream << "\n";
+    }
+
+    indent--;
+    stream << ind() << "};\n";
+    stream << "\n";
+}
 
 void WrapperEmitter::emit() {
     std::vector<std::string> namespaces = split_string(fully_qualified_name, "::");
@@ -205,35 +287,9 @@ void WrapperEmitter::emit() {
     stream << ind() << "class " << class_name << " final : public Halide::Internal::GeneratorWrapper {\n";
     stream << ind() << "public:\n";
     indent++;
-    stream << ind() << "struct GeneratorParams {\n";
-    indent++;
-    for (auto p : generator_params) {
-        if (p->name == "target") continue;
-        stream << ind() << p->get_c_type() << " " << p->name << "{ " << p->get_default_value() << " };\n";
-    }
-    stream << "\n";
 
-    stream << ind() << "GeneratorParams() {}\n";
-    stream << "\n";
-    stream << ind() << "std::map<std::string, std::string> to_map() const {\n";
-    indent++;
-    stream << ind() << "std::map<std::string, std::string> m;\n";
-    for (auto p : generator_params) {
-        if (p->name == "target") continue;
-        stream << ind() << "if (" << p->name << " != " << p->get_default_value() << ") "
-                        << "m[\"" << p->name << "\"] = " << p->call_to_string(p->name) << ";\n";
-    }
-    stream << ind() << "return m;\n";
-    indent--;
-    stream << ind() << "}\n";
-    stream << "\n";
-
-    stream << ind() << "GeneratorParams(const GeneratorParams&) = delete;\n";
-    stream << ind() << "void operator=(const GeneratorParams&) = delete;\n";
-    indent--;
-    stream << ind() << "};\n";
-    stream << "\n";
-
+    emit_params_struct(true);
+    emit_params_struct(false);
 
     stream << ind() << "// default ctor\n";
     stream << ind() << class_name << "() {}\n";
@@ -254,19 +310,27 @@ void WrapperEmitter::emit() {
     indent--;
     stream << ind() << ")\n";
     indent++;
-    stream << ind() << ": GeneratorWrapper(context, &factory, params.to_map(), {\n";
+    stream << ind() << ": GeneratorWrapper(context, &factory, params.to_string_map(), {\n";
     indent++;
     for (size_t i = 0; i < inputs.size(); ++i) {
         stream << ind() << "Halide::Internal::to_func_or_expr_vector(" << inputs[i]->name() << ")";
         stream << ",\n";
     }
     indent--;
-    stream << ind() << " })\n";
+    stream << ind() << "})\n";
     for (const auto &out : out_info) {
         stream << ind() << ", " << out.name << "(" << out.getter << ")\n";
     }
     indent--;
     stream << ind() << "{\n";
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "// schedule method\n";
+    stream << ind() << "void schedule(const ScheduleParams& params = ScheduleParams()) {\n";
+    indent++;
+    stream << ind() << "GeneratorWrapper::schedule(params.to_string_map(), params.to_looplevel_map());\n";
+    indent--;
     stream << ind() << "}\n";
     stream << "\n";
 
@@ -346,8 +410,6 @@ void WrapperEmitter::emit() {
     stream << ind() << "#endif  // " << guard.str() << "\n";
 }
 
-}  // namespace
-
 void verify_same_funcs(Func a, Func b) {
     user_assert(a.function().get_contents().same_as(b.function().get_contents())) 
         << "Expected Func " << a.name() << " and " << b.name() << " to match.\n";
@@ -375,15 +437,18 @@ const std::map<std::string, Halide::Type> &get_halide_type_enum_map() {
     return halide_type_enum_map;
 }
 
-std::string halide_type_to_enum_string(const Halide::Type & t) {
-    auto enum_map = get_halide_type_enum_map();
-    for (auto key_value : enum_map) {
-        if (t == key_value.second) {
-            return key_value.first;
-        }
-    }
-    user_error << "Type value not found: " << t;
-    return "";
+LoopLevel get_halide_undefined_looplevel() {
+    static LoopLevel undefined(Func("__undefined_looplevel_func"), Var("__undefined_looplevel_var"));
+    return undefined;
+}
+
+const std::map<std::string, LoopLevel> &get_halide_looplevel_enum_map() {
+    static const std::map<std::string, LoopLevel> halide_looplevel_enum_map{
+        {"root", LoopLevel::root()},
+        {"undefined", get_halide_undefined_looplevel()},
+        {"inline", LoopLevel()},
+    };
+    return halide_looplevel_enum_map;
 }
 
 int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
@@ -464,7 +529,8 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
 
     // It's ok to omit "target=" if we are generating *only* a wrapper
     const std::vector<std::string> emit_flags = split_string(flags_info["-e"], ",");
-    if (!(emit_flags.size() == 1 && emit_flags[0] == "wrapper")) {
+    const bool wrapper_only = (emit_flags.size() == 1 && emit_flags[0] == "wrapper");
+    if (!wrapper_only) {
         if (generator_args.find("target") == generator_args.end()) {
             cerr << "Target missing\n";
             cerr << kUsage;
@@ -557,25 +623,28 @@ int generate_filter_main(int argc, char **argv, std::ostream &cerr) {
             gen->emit_wrapper(wrapper_file_path);
         }
 
-        Outputs output_files = compute_outputs(targets[0], base_path, emit_options);
-        auto module_producer = [&generator_name, &generator_args, &cerr]
-            (const std::string &name, const Target &target) -> Module {
-                auto sub_generator_args = generator_args;
-                sub_generator_args["target"] = target.to_string();
-                // Must re-create each time since each instance will have a different Target
-                auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
-                if (gen == nullptr) {
-                    cerr << "Unknown generator: " << generator_name << "\n";
-                    exit(1);
-                }
-                return gen->build_module(name);
-            };
-        if (targets.size() > 1) {
-            compile_multitarget(function_name, output_files, targets, module_producer);
-        } else {
-            // compile_multitarget() will fail if we request anything but library and/or header,
-            // so defer directly to Module::compile if there is a single target.
-            module_producer(function_name, targets[0]).compile(output_files);
+        // Don't bother with this if we're just emitting a wrapper.
+        if (!wrapper_only) {
+            Outputs output_files = compute_outputs(targets[0], base_path, emit_options);
+            auto module_producer = [&generator_name, &generator_args, &cerr]
+                (const std::string &name, const Target &target) -> Module {
+                    auto sub_generator_args = generator_args;
+                    sub_generator_args["target"] = target.to_string();
+                    // Must re-create each time since each instance will have a different Target
+                    auto gen = GeneratorRegistry::create(generator_name, sub_generator_args);
+                    if (gen == nullptr) {
+                        cerr << "Unknown generator: " << generator_name << "\n";
+                        exit(1);
+                    }
+                    return gen->build_module(name);
+                };
+            if (targets.size() > 1) {
+                compile_multitarget(function_name, output_files, targets, module_producer);
+            } else {
+                // compile_multitarget() will fail if we request anything but library and/or header,
+                // so defer directly to Module::compile if there is a single target.
+                module_producer(function_name, targets[0]).compile(output_files);
+            }
         }
     }
 
@@ -619,7 +688,7 @@ void GeneratorRegistry::unregister_factory(const std::string &name) {
 
 /* static */
 std::unique_ptr<GeneratorBase> GeneratorRegistry::create(const std::string &name,
-                                                         const GeneratorParamValues &params) {
+                                                         const std::map<std::string, std::string> &params) {
     GeneratorRegistry &registry = get_registry();
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.factories.find(name);
@@ -776,16 +845,17 @@ std::vector<Argument> GeneratorBase::get_filter_arguments() {
     return arguments;
 }
 
-GeneratorParamValues GeneratorBase::get_generator_param_values() {
+std::map<std::string, std::string> GeneratorBase::get_generator_param_values() {
     build_params();
-    GeneratorParamValues results;
+    std::map<std::string, std::string> results;
     for (auto param : generator_params) {
         results[param->name] = param->to_string();
     }
     return results;
 }
 
-void GeneratorBase::set_generator_param_values(const GeneratorParamValues &params) {
+void GeneratorBase::set_generator_param_values(const std::map<std::string, std::string> &params, 
+                                               const std::map<std::string, LoopLevel> &looplevel_params) {
     build_params();
     std::map<std::string, GeneratorParamBase *> m;
     for (auto param : generator_params) {
@@ -797,6 +867,14 @@ void GeneratorBase::set_generator_param_values(const GeneratorParamValues &param
         auto p = m.find(key);
         user_assert(p != m.end()) << "Generator has no GeneratorParam named: " << key;
         p->second->from_string(value);
+    }
+    for (auto key_value : looplevel_params) {
+        const std::string &key = key_value.first;
+        const LoopLevel &value = key_value.second;
+        auto p = m.find(key);
+        user_assert(p != m.end()) << "Generator has no GeneratorParam named: " << key;
+        user_assert(p->second->is_schedule_param()) << "LoopLevel param cannot be specified for: " << key;
+        static_cast<GeneratorParam<LoopLevel> *>(p->second)->set(value);
     }
 }
 
@@ -923,7 +1001,7 @@ void GIOBase::verify_internals() const {
     user_assert(dimensions_.value() >= 0) << "Generator Input/Output Dimensions must have positive values";
 
     user_assert(values_.size() == (size_t)array_size_.value()) << "Expected value_size() == " 
-        << array_size_.value() << ", saw " << values_.size() << " for " << name() << "\n";;
+        << array_size_.value() << ", saw " << values_.size() << " for " << name() << "\n";
     for (const FuncOrExpr &v : values_) {
         user_assert(v.kind() == kind()) << "Input/Ouput " << name() << " is not of the expected type.\n";
         if (kind() == IOKind::Function) {
