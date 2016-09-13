@@ -815,14 +815,14 @@ public:
     }
     int dimensions() const { return dimensions_.value(); }
 
-    size_t value_size() const { return values_.size(); }
-    const FuncOrExpr &value_at(size_t i) const { 
-        internal_assert(i < values_.size());
-        return values_.at(i); 
+    const std::vector<Func> &funcs() const {
+        internal_assert(funcs_.size() == array_size() && exprs_.empty());
+        return funcs_;
     }
-    const FuncOrExpr &value() const { 
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
-        return value_at(0); 
+
+    const std::vector<Expr> &exprs() const {
+        internal_assert(exprs_.size() == array_size() && funcs_.empty());
+        return exprs_;
     }
 
 protected:
@@ -835,7 +835,9 @@ protected:
     std::vector<TypeArg> types_;
     DimensionArg dimensions_;
 
-    std::vector<FuncOrExpr> values_;
+    // Exactly one will have nonzero length
+    std::vector<Func> funcs_;
+    std::vector<Expr> exprs_;
 
     std::string array_name(size_t i) const;
 
@@ -1026,14 +1028,14 @@ public:
      * function definition */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     operator Expr() const { 
-        return value().expr(); 
+        return exprs().at(0); 
     }
 
     /** Using an Input as the argument to an external stage treats it
      * as an Expr */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     operator ExternFuncArgument() const {
-        return ExternFuncArgument(value().expr());
+        return ExternFuncArgument(exprs().at(0));
     }
 
 
@@ -1067,23 +1069,34 @@ public:
     template <typename... Args,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(Args&&... args) const {
-        return value().func()(std::forward<Args>(args)...);
+        return funcs().at(0)(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(std::vector<Expr> args) const {
-        return value().func()(args);
+        return funcs().at(0)(args);
     }
 
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
     operator class Func() const { 
-        return value().func(); 
+        return funcs().at(0); 
     }
 
-    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    template <typename T2 = T, typename std::enable_if<
+        std::is_array<T2>::value &&
+        std::is_same<TBase, Func>::value
+    >::type * = nullptr>
     size_t size() const {
-        return value_size();
+        return funcs().size();
+    }
+
+    template <typename T2 = T, typename std::enable_if<
+        std::is_array<T2>::value &&
+        std::is_scalar<TBase>::value
+    >::type * = nullptr>
+    size_t size() const {
+        return exprs().size();
     }
 
     template <typename T2 = T, typename std::enable_if<
@@ -1091,7 +1104,7 @@ public:
         std::is_same<TBase, Func>::value
     >::type * = nullptr>
     Func operator[](size_t i) const {
-        return value_at(i).func();
+        return funcs().at(i);
     }
 
     template <typename T2 = T, typename std::enable_if<
@@ -1099,7 +1112,7 @@ public:
         std::is_scalar<TBase>::value
     >::type * = nullptr>
     Expr operator[](size_t i) const {
-        return value_at(i).expr();
+        return exprs().at(i);
     }
 
 private:
@@ -1217,27 +1230,27 @@ public:
 
     template <typename... Args, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
-        return value().func()(std::forward<Args>(args)...);
+        return funcs().at(0)(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(std::vector<ExprOrVar> args) const {
-        return value().func()(args);
+        return funcs().at(0)(args);
     }
 
     template <typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     operator class Func() const { 
-        return value().func(); 
+        return funcs().at(0); 
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     size_t size() const {
-        return value_size();
+        return funcs().size();
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     Func operator[](size_t i) const {
-        return value_at(i).func();
+        return funcs().at(i);
     }
 
 private:
