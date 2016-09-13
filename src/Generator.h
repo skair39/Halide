@@ -834,6 +834,7 @@ protected:
     const IOKind kind_;
     std::vector<TypeArg> types_;
     DimensionArg dimensions_;
+
     std::vector<FuncOrExpr> values_;
 
     std::string array_name(size_t i) const;
@@ -1025,16 +1026,14 @@ public:
      * function definition */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     operator Expr() const { 
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
-        return value_at(0).expr(); 
+        return value().expr(); 
     }
 
     /** Using an Input as the argument to an external stage treats it
      * as an Expr */
     template <typename T2 = T, typename if_scalar<T2>::type * = nullptr>
     operator ExternFuncArgument() const {
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
-        return ExternFuncArgument(value_at(0).expr());
+        return ExternFuncArgument(value().expr());
     }
 
 
@@ -1068,21 +1067,18 @@ public:
     template <typename... Args,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(Args&&... args) const {
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
-        return value_at(0).func()(std::forward<Args>(args)...);
+        return value().func()(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar,
               typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(std::vector<Expr> args) const {
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
-        return value_at(0).func()(args);
+        return value().func()(args);
     }
 
     template <typename T2 = T, typename if_func<T2>::type * = nullptr>
     operator class Func() const { 
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
-        return value_at(0).func(); 
+        return value().func(); 
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
@@ -1221,19 +1217,16 @@ public:
 
     template <typename... Args, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
-        internal_assert(value_size() == 1) << "Expected value_size() == 1, saw " << value_size() << " for " << name() << "\n";
         return value().func()(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(std::vector<ExprOrVar> args) const {
-        internal_assert(value_size() == 1);
         return value().func()(args);
     }
 
     template <typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     operator class Func() const { 
-        internal_assert(value_size() == 1);
         return value().func(); 
     }
 
