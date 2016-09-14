@@ -843,10 +843,23 @@ protected:
 
     virtual void verify_internals() const;
 
+    template<typename ElemType>
+    const std::vector<ElemType> &get_values() const;
+
 private:
     explicit GIOBase(const GIOBase &) = delete;
     void operator=(const GIOBase &) = delete;
 };
+
+template<>
+inline const std::vector<Expr> &GIOBase::get_values<Expr>() const {
+    return exprs();
+}
+
+template<>
+inline const std::vector<Func> &GIOBase::get_values<Func>() const {
+    return funcs();
+}
 
 class GeneratorInputBase : public GIOBase {
 public:
@@ -918,6 +931,8 @@ private:
     void set_def_min_max_impl() {
         // nothing
     }
+
+    using ValueType = typename std::conditional<std::is_same<TBase, Func>::value, Func, Expr>::type;
 
 protected:
     void set_def_min_max() override {
@@ -1072,8 +1087,7 @@ public:
         return funcs().at(0)(std::forward<Args>(args)...);
     }
 
-    template <typename ExprOrVar,
-              typename T2 = T, typename if_func<T2>::type * = nullptr>
+    template <typename T2 = T, typename if_func<T2>::type * = nullptr>
     Expr operator()(std::vector<Expr> args) const {
         return funcs().at(0)(args);
     }
@@ -1083,36 +1097,14 @@ public:
         return funcs().at(0); 
     }
 
-    template <typename T2 = T, typename std::enable_if<
-        std::is_array<T2>::value &&
-        std::is_same<TBase, Func>::value
-    >::type * = nullptr>
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     size_t size() const {
-        return funcs().size();
+        return get_values<ValueType>().size();
     }
 
-    template <typename T2 = T, typename std::enable_if<
-        std::is_array<T2>::value &&
-        std::is_scalar<TBase>::value
-    >::type * = nullptr>
-    size_t size() const {
-        return exprs().size();
-    }
-
-    template <typename T2 = T, typename std::enable_if<
-        std::is_array<T2>::value &&
-        std::is_same<TBase, Func>::value
-    >::type * = nullptr>
-    Func operator[](size_t i) const {
-        return funcs().at(i);
-    }
-
-    template <typename T2 = T, typename std::enable_if<
-        std::is_array<T2>::value &&
-        std::is_scalar<TBase>::value
-    >::type * = nullptr>
-    Expr operator[](size_t i) const {
-        return exprs().at(i);
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    ValueType operator[](size_t i) const {
+        return get_values<ValueType>().at(i);
     }
 
 private:
