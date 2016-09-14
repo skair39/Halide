@@ -35,7 +35,7 @@ public:
                 intermediate(x, y, c),
                 cast(output_type, intermediate(x, y, c) + int_arg[0]));
 
-        for (int i = 0; i < array_count; ++i) {
+        for (size_t i = 0; i < input.size(); ++i) {
             g[i](x, y) = cast<int16_t>(input[i](x, y, 0) + int_arg[i]);
         }
     }
