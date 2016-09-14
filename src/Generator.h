@@ -977,7 +977,7 @@ public:
         : GeneratorInputBase(array_size, n, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
     }
     template <typename T2 = T, typename std::enable_if<
-        // Only allow T2[]
+        // Only allow T2[kSomeConst]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
         std::is_scalar<TBase>::value
     >::type * = nullptr>
@@ -1008,7 +1008,7 @@ public:
         : GeneratorInput(array_size, n, static_cast<TBase>(0)) {}
 
     template <typename T2 = T, typename std::enable_if<
-        // Only allow T2[]
+        // Only allow T2[kSomeConst]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
         std::is_scalar<TBase>::value
     >::type * = nullptr>
@@ -1057,7 +1057,7 @@ public:
     }
 
     template <typename T2 = T, typename std::enable_if<
-        // Only allow T2[]
+        // Only allow T2[kSomeConst]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
         std::is_same<TBase, Func>::value
     >::type * = nullptr>
