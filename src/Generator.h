@@ -1104,7 +1104,22 @@ public:
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     ValueType operator[](size_t i) const {
+        return get_values<ValueType>()[i];
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    ValueType at(size_t i) const {
         return get_values<ValueType>().at(i);
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    typename std::vector<ValueType>::const_iterator begin() const {
+        return get_values<ValueType>().begin();
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    typename std::vector<ValueType>::const_iterator end() const {
+        return get_values<ValueType>().end();
     }
 
 private:
@@ -1242,7 +1257,22 @@ public:
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     Func operator[](size_t i) const {
+        return funcs()[i];
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    Func at(size_t i) const {
         return funcs().at(i);
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    typename std::vector<Func>::const_iterator begin() const {
+        return funcs().begin();
+    }
+
+    template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
+    typename std::vector<Func>::const_iterator end() const {
+        return funcs().end();
     }
 
 private:

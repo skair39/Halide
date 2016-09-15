@@ -19,12 +19,12 @@ public:
     }
 
     void schedule() {
-        for (size_t i = 0; i < pyramid.size(); i++) {
+        for (Func p : pyramid) {
             // No need to specify compute_root() for outputs
-            pyramid[i].parallel(y);
+            p.parallel(y);
             // Vectorize if we're still wide enough at this level
             const int v = natural_vector_size<float>();
-            pyramid[i].specialize(pyramid[i].output_buffer().width() >= v).vectorize(x, v);
+            p.specialize(p.output_buffer().width() >= v).vectorize(x, v);
         }
      }
 
