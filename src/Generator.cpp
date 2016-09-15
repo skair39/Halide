@@ -284,6 +284,13 @@ void WrapperEmitter::emit() {
     }
     stream << "\n";
 
+    for (auto p : generator_params) {
+        if (p->name == "target") continue;
+        std::string decl = p->get_type_decls();
+        if (decl.empty()) continue;
+        stream << decl << "\n";
+    }
+
     stream << ind() << "class " << class_name << " final : public Halide::Internal::GeneratorWrapper {\n";
     stream << ind() << "public:\n";
     indent++;

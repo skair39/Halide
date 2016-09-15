@@ -154,6 +154,7 @@ protected:
     virtual std::string call_to_string(const std::string &v) const = 0;
     virtual std::string get_default_value() const = 0;
     virtual std::string get_c_type() const = 0;
+    virtual std::string get_type_decls() const = 0;
     virtual bool is_schedule_param() const { return false; }
     virtual bool is_looplevel_param() const { return false; }
 
@@ -285,6 +286,12 @@ protected:
         // delegate to a function that we can specialize based on the template argument
         return get_c_type_impl();
     }
+
+    std::string get_type_decls() const override {
+        // delegate to a function that we can specialize based on the template argument
+        return get_type_decls_impl();
+    }
+    
 
 private:
     T value;
@@ -475,21 +482,40 @@ private:
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string to_string_impl(const T& t) const {
-        return Internal::enum_to_string(enum_map, t);
+        return "Enum_" + name + "::" + Internal::enum_to_string(enum_map, t);
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string call_to_string_impl(const std::string &v) const {
-        return v;
+        return "Enum_" + name + "_map().at(" + v + ")";
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string get_c_type_impl() const {
-        // Model all enums as "string" for our purposes here.
-        // TODO(srj): improve this.
-        return "std::string";
+        return "Enum_" + name;
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string get_default_value_impl() const {
-        return "\"" + to_string_impl(def) + "\"";
+        return to_string_impl(def);
+    }
+    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
+    std::string get_type_decls_impl() const {
+        std::ostringstream oss;
+        oss << "enum class Enum_" << name << " {\n";
+        for (auto key_value : enum_map) {
+            oss << "  " << key_value.first << ",\n";
+        }
+        oss << "};\n";
+        oss << "\n";
+        // TODO: since we generate the enums, we could probably just use a vector (or array!) rather than a map,
+        // since we can ensure that the enum values are a nice tight range.
+        oss << "NO_INLINE const std::map<Enum_" << name << ", std::string>& Enum_" << name << "_map() {\n";
+        oss << "  static const std::map<Enum_" << name << ", std::string> m = {\n";
+        for (auto key_value : enum_map) {
+            oss << "    { Enum_" << name << "::" << key_value.first << ", \"" << key_value.first << "\"},\n";
+        }
+        oss << "  };\n";
+        oss << "  return m;\n";
+        oss << "};\n";
+        return oss.str();
     }
 
     // string conversions: LoopLevel
@@ -522,6 +548,12 @@ private:
         if (def.is_root()) return "Halide::LoopLevel::root()";
         if (def.is_inline()) return "Halide::LoopLevel()";
         user_error << "LoopLevel value not found.\n";
+        return "";
+    }
+
+    // Non-enums don't need this
+    template <typename T2 = T, typename std::enable_if<!std::is_enum<T2>::value>::type * = nullptr>
+    std::string get_type_decls_impl() const {
         return "";
     }
 

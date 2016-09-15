@@ -2,17 +2,17 @@
 
 namespace {
 
-enum class SomeEnum { EnumA, EnumB };
+enum class BagType { Paper, Plastic };
 
 class Wrappee : public Halide::Generator<Wrappee> {
 public:
     GeneratorParam<Type> input_type{ "input_type", UInt(8) };
     GeneratorParam<Type> output_type{ "output_type", Float(32) };
     GeneratorParam<int> array_count{ "array_count", 2 };
-    GeneratorParam<SomeEnum> some_enum{ "some_enum",
-                                        SomeEnum::EnumA,
-                                        { { "enum_a", SomeEnum::EnumA },
-                                          { "enum_b", SomeEnum::EnumB } } };
+    GeneratorParam<BagType> bag_type{ "bag_type",
+                                      BagType::Paper,
+                                      { { "paper", BagType::Paper },
+                                        { "plastic", BagType::Plastic } } };
 
     ScheduleParam<bool> vectorize{ "vectorize", true };
     ScheduleParam<LoopLevel> intermediate_level{ "intermediate_level", "undefined" };
