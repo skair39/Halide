@@ -516,6 +516,7 @@ HEADER_FILES = \
   UnrollLoops.h \
   Util.h \
   Var.h \
+  VaryingAttributes.h \
   VectorizeLoops.h \
   WrapCalls.h
 

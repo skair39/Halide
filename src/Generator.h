@@ -1480,12 +1480,9 @@ public:
 
     Target get_target() const override { return target; }
 
-    EXPORT std::map<std::string, std::string> get_generator_param_values();
     EXPORT void set_generator_param_values(const std::map<std::string, std::string> &params, 
                                            const std::map<std::string, LoopLevel> &looplevel_params = {});
 
-    EXPORT std::vector<Argument> get_filter_arguments();
-    EXPORT std::vector<Argument> get_filter_output_types();
 
     /** Given a data type, return an estimate of the "natural" vector size
      * for that data type when compiling for the current target. */
@@ -1499,14 +1496,6 @@ public:
     int natural_vector_size() const {
         return get_target().natural_vector_size<data_t>();
     }
-
-    // Call build() and produce compiled output of the given func.
-    // All files will be in the given directory, with the given file_base_name
-    // plus an appropriate extension. If file_base_name is empty, function_name
-    // will be used as file_base_name. If function_name is empty, generator_name()
-    // will be used for the function.
-    EXPORT void emit_filter(const std::string &output_dir, const std::string &function_name = "",
-                            const std::string &file_base_name = "", const EmitOptions &options = EmitOptions());
 
     EXPORT void emit_wrapper(const std::string &wrapper_file_path);
 
@@ -1552,8 +1541,7 @@ private:
     bool inputs_set{false};
     std::string wrapper_class_name;
 
-    EXPORT void build_params();
-    EXPORT void rebuild_params();
+    EXPORT void build_params(bool force = false);
     EXPORT void init_inputs_and_outputs();
 
     // Provide private, unimplemented, wrong-result-type methods here
@@ -1800,10 +1788,8 @@ public:
     Target get_target() const { return generator__->get_target(); }
 
     // schedule method
-    // TODO: add ScheduleParams
     void schedule(const std::map<std::string, std::string> &schedule_params,
                   const std::map<std::string, LoopLevel> &schedule_params_looplevels) {
-        // TODO: set ScheduleParams
         generator__->set_generator_param_values(schedule_params, schedule_params_looplevels);
         generator__->call_schedule();
     }

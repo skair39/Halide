@@ -798,16 +798,14 @@ GeneratorBase::~GeneratorBase() {
     ObjectInstanceRegistry::unregister_instance(this); 
 }
 
-void GeneratorBase::rebuild_params() {
-    params_built = false;
-    filter_inputs.clear();
-    filter_outputs.clear();
-    filter_params.clear();
-    generator_params.clear();
-    build_params();
-}
-
-void GeneratorBase::build_params() {
+void GeneratorBase::build_params(bool force) {
+    if (force) {
+        params_built = false;
+        filter_inputs.clear();
+        filter_outputs.clear();
+        filter_params.clear();
+        generator_params.clear();
+    }
     if (!params_built) {
         std::set<std::string> names;
         std::vector<void *> vf = ObjectInstanceRegistry::instances_in_range(
@@ -908,30 +906,6 @@ std::vector<Func> GeneratorBase::get_output_vector(const std::string &n) {
     return {};
 }
 
-std::vector<Argument> GeneratorBase::get_filter_arguments() {
-    build_params();
-    init_inputs_and_outputs();  // TODO(srj): not sure if we need this, unlikely we do
-    std::vector<Argument> arguments;
-    for (auto param : filter_params) {
-        arguments.push_back(to_argument(*param));
-    }
-    for (auto input : filter_inputs) {
-        for (const auto &p : input->parameters_) {
-            arguments.push_back(to_argument(p));
-        }
-    }
-    return arguments;
-}
-
-std::map<std::string, std::string> GeneratorBase::get_generator_param_values() {
-    build_params();
-    std::map<std::string, std::string> results;
-    for (auto param : generator_params) {
-        results[param->name] = param->to_string();
-    }
-    return results;
-}
-
 void GeneratorBase::set_generator_param_values(const std::map<std::string, std::string> &params, 
                                                const std::map<std::string, LoopLevel> &looplevel_params) {
     build_params();
@@ -1016,28 +990,25 @@ Pipeline GeneratorBase::produce_pipeline() {
     return Pipeline(funcs);
 }
 
-std::vector<Argument> GeneratorBase::get_filter_output_types() {
-    std::vector<Argument> output_types;
-    Pipeline pipeline = build_pipeline();
-    std::vector<Func> pipeline_results = pipeline.outputs();
-    for (Func func : pipeline_results) {
-        for (Halide::Type t : func.output_types()) {
-            std::string name = "result_" + std::to_string(output_types.size());
-            output_types.push_back(Halide::Argument(name, Halide::Argument::OutputBuffer, t, func.dimensions()));
-        }
-    }
-    return output_types;
-}
-
 Module GeneratorBase::build_module(const std::string &function_name,
                                    const LoweredFunc::LinkageType linkage_type) {
     build_params();
     Pipeline pipeline = build_pipeline();
     // Building the pipeline may mutate the Params/ImageParams (but not Inputs).
     if (filter_params.size() > 0) {
-        rebuild_params();
+        build_params(true);
     }
-    return pipeline.compile_to_module(get_filter_arguments(), function_name, target, linkage_type);
+
+    std::vector<Argument> filter_arguments;
+    for (auto param : filter_params) {
+        filter_arguments.push_back(to_argument(*param));
+    }
+    for (auto input : filter_inputs) {
+        for (const auto &p : input->parameters_) {
+            filter_arguments.push_back(to_argument(p));
+        }
+    }
+    return pipeline.compile_to_module(filter_arguments, function_name, target, linkage_type);
 }
 
 void GeneratorBase::emit_wrapper(const std::string &wrapper_file_path) {
@@ -1046,18 +1017,6 @@ void GeneratorBase::emit_wrapper(const std::string &wrapper_file_path) {
     std::ofstream file(wrapper_file_path);
     WrapperEmitter emit(file, wrapper_class_name, generator_params, filter_inputs, filter_outputs);
     emit.emit();
-}
-
-void GeneratorBase::emit_filter(const std::string &output_dir,
-                                const std::string &function_name,
-                                const std::string &file_base_name,
-                                const EmitOptions &options) {
-    std::string base_path = compute_base_path(output_dir, function_name, file_base_name);
-    if (options.emit_wrapper) {
-        auto wrapper_name = base_path + get_extension(".wrapper.h", options);
-        emit_wrapper(wrapper_name);
-    }
-    compile_module_to_filter(build_module(function_name), base_path, options);
 }
 
 GIOBase::GIOBase(const ArraySizeArg &array_size, 
