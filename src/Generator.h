@@ -155,6 +155,8 @@ protected:
     virtual std::string get_default_value() const = 0;
     virtual std::string get_c_type() const = 0;
     virtual std::string get_type_decls() const = 0;
+    virtual std::string get_template_type() const = 0;
+    virtual std::string get_template_value() const = 0;
     virtual bool is_schedule_param() const { return false; }
     virtual bool is_looplevel_param() const { return false; }
 
@@ -292,6 +294,15 @@ protected:
         return get_type_decls_impl();
     }
     
+    std::string get_template_type() const override {
+        // delegate to a function that we can specialize based on the template argument
+        return get_template_type_impl();
+    }
+
+    std::string get_template_value() const override {
+        // delegate to a function that we can specialize based on the template argument
+        return get_template_value_impl();
+    }
 
 private:
     T value;
@@ -326,6 +337,18 @@ private:
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        internal_error << "Unimplemented";
+        return "";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        internal_error << "Unimplemented";
+        return "";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
     std::string get_default_value_impl() const {
         return def.to_string();
     }
@@ -352,6 +375,31 @@ private:
               typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
     std::string get_c_type_impl() const {
         return "Halide::Type";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        return "typename";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        // TODO(srj): improve
+        const std::map<std::string, std::string> m = {
+            { "Halide::Int(8)", "int8_t" },
+            { "Halide::Int(16)", "int16_t" },
+            { "Halide::Int(32)", "int32_t" },
+            { "Halide::Int(64)", "int64_t" },
+            { "Halide::UInt(1)", "bool" },
+            { "Halide::UInt(8)", "uint8_t" },
+            { "Halide::UInt(16)", "uint16_t" },
+            { "Halide::UInt(32)", "uint32_t" },
+            { "Halide::UInt(64)", "uint64_t" },
+            { "Halide::Float(32)", "float" },
+            { "Halide::Float(64)", "double" },
+            { "Halide::Handle(64)", "void*" }
+        };
+        return m.at(get_default_value_impl());
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
@@ -395,6 +443,16 @@ private:
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        return get_c_type_impl();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        return get_default_value_impl();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
     std::string get_default_value_impl() const {
         return def ? "true" : "false";
     }
@@ -428,6 +486,16 @@ private:
         if (std::is_unsigned<T>::value) oss << 'u';
         oss << "int" << (sizeof(T) * 8) << "_t";
         return oss.str();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        return get_c_type_impl();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        return get_default_value_impl();
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
@@ -471,6 +539,16 @@ private:
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        return get_c_type_impl();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        return get_default_value_impl();
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
     std::string get_default_value_impl() const {
         return std::to_string(def);
     }
@@ -491,6 +569,14 @@ private:
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string get_c_type_impl() const {
         return "Enum_" + name;
+    }
+    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        return get_c_type_impl();
+    }
+    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        return get_default_value_impl();
     }
     template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
     std::string get_default_value_impl() const {
@@ -540,6 +626,18 @@ private:
               typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
     std::string get_c_type_impl() const {
         return "Halide::LoopLevel";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    std::string get_template_type_impl() const {
+        internal_error << "Unimplemented";
+        return "";
+    }
+    template <typename T2 = T,
+              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
+    std::string get_template_value_impl() const {
+        internal_error << "Unimplemented";
+        return "";
     }
     template <typename T2 = T,
               typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>

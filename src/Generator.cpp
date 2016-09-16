@@ -126,8 +126,8 @@ public:
                    const std::vector<Internal::GeneratorParamBase *>& generator_params,
                    const std::vector<Internal::GeneratorInputBase *>& inputs,
                    const std::vector<Internal::GeneratorOutputBase *>& outputs) 
-        : stream(dest), fully_qualified_name(fully_qualified_name), generator_params(generator_params), 
-          inputs(inputs), outputs(outputs) {
+        : stream(dest), fully_qualified_name(fully_qualified_name), generator_params(filter_params(generator_params, false)), 
+          schedule_params(filter_params(generator_params, true)), inputs(inputs), outputs(outputs) {
         internal_assert(!outputs.empty());
     }
 
@@ -136,14 +136,27 @@ private:
     std::ostream &stream;
     const std::string fully_qualified_name;
     const std::vector<Internal::GeneratorParamBase *> generator_params;
+    const std::vector<Internal::GeneratorParamBase *> schedule_params;
     const std::vector<Internal::GeneratorInputBase *> inputs;
     const std::vector<Internal::GeneratorOutputBase *> outputs;
     int indent{0};
+
+    std::vector<Internal::GeneratorParamBase *> filter_params(const std::vector<Internal::GeneratorParamBase *> &in, 
+                                                              bool is_schedule_params) {
+        std::vector<Internal::GeneratorParamBase *> out;
+        for (auto p : in) {
+            if (p->name == "target") continue;
+            if (p->is_schedule_param() != is_schedule_params) continue;
+            out.push_back(p);
+        }
+        return out;
+    }
 
     /** Emit spaces according to the current indentation level */
     std::string ind();
 
     void emit_params_struct(bool schedule_only);
+    void emit_inputs();
 };
 
 std::string WrapperEmitter::ind() {
@@ -155,12 +168,11 @@ std::string WrapperEmitter::ind() {
 }
 
 void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
+    const auto &v = is_schedule_params ? schedule_params : generator_params;
     std::string name = is_schedule_params ? "ScheduleParams" : "GeneratorParams";
     stream << ind() << "struct " << name << " {\n";
     indent++;
-    for (auto p : generator_params) {
-        if (p->name == "target") continue;
-        if (is_schedule_params != p->is_schedule_param()) continue;
+    for (auto p : v) {
         stream << ind() << p->get_c_type() << " " << p->name << "{ " << p->get_default_value() << " };\n";
     }
     stream << "\n";
@@ -173,9 +185,7 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
     stream << ind() << name << "(\n";
     indent++;
     std::string comma = "";
-    for (auto p : generator_params) {
-        if (p->name == "target") continue;
-        if (is_schedule_params != p->is_schedule_param()) continue;
+    for (auto p : v) {
         stream << ind() << comma << p->get_c_type() << " " << p->name << "\n";
         comma = ", ";
     }
@@ -183,9 +193,7 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
     stream << ind() << ") : \n";
     indent++;
     comma = "";
-    for (auto p : generator_params) {
-        if (p->name == "target") continue;
-        if (is_schedule_params != p->is_schedule_param()) continue;
+    for (auto p : v) {
         stream << ind() << comma << p->name << "(" << p->name << ")\n";
         comma = ", ";
     }
@@ -197,9 +205,7 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
     stream << ind() << "NO_INLINE std::map<std::string, std::string> to_string_map() const {\n";
     indent++;
     stream << ind() << "std::map<std::string, std::string> m;\n";
-    for (auto p : generator_params) {
-        if (p->name == "target") continue;
-        if (is_schedule_params != p->is_schedule_param()) continue;
+    for (auto p : v) {
         if (p->is_looplevel_param()) continue;
         stream << ind() << "if (" << p->name << " != " << p->get_default_value() << ") "
                         << "m[\"" << p->name << "\"] = " << p->call_to_string(p->name) << ";\n";
@@ -207,14 +213,13 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
     stream << ind() << "return m;\n";
     indent--;
     stream << ind() << "}\n";
-    stream << "\n";
 
     if (is_schedule_params) {
+        stream << "\n";
         stream << ind() << "NO_INLINE std::map<std::string, Halide::LoopLevel> to_looplevel_map() const {\n";
         indent++;
         stream << ind() << "std::map<std::string, Halide::LoopLevel> m;\n";
-        for (auto p : generator_params) {
-            if (p->name == "target") continue;
+        for (auto p : v) {
             if (!p->is_looplevel_param()) continue;
             stream << ind() << "if (" << p->name << " != " << p->get_default_value() << ") "
                             << "m[\"" << p->name << "\"] = " << p->name << ";\n";
@@ -222,12 +227,22 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
         stream << ind() << "return m;\n";
         indent--;
         stream << ind() << "}\n";
-        stream << "\n";
     }
 
     indent--;
     stream << ind() << "};\n";
     stream << "\n";
+}
+
+void WrapperEmitter::emit_inputs() {
+    stream << ind() << "const Halide::GeneratorContext& context\n";
+    for (auto input : inputs) {
+        std::string type(input->kind() == IOKind::Function ? "Halide::Func" : "Halide::Expr");
+        if (input->is_array()) {
+            type = "const std::vector<" + type + ">&";
+        }
+        stream << ind() << ", " << type << " " << input->name() << "\n";
+    }
 }
 
 void WrapperEmitter::emit() {
@@ -285,7 +300,12 @@ void WrapperEmitter::emit() {
     stream << "\n";
 
     for (auto p : generator_params) {
-        if (p->name == "target") continue;
+        std::string decl = p->get_type_decls();
+        if (decl.empty()) continue;
+        stream << decl << "\n";
+    }
+
+    for (auto p : schedule_params) {
         std::string decl = p->get_type_decls();
         if (decl.empty()) continue;
         stream << decl << "\n";
@@ -305,15 +325,8 @@ void WrapperEmitter::emit() {
     stream << ind() << "// ctor with inputs\n";
     stream << ind() << class_name << "(\n";
     indent++;
-    stream << ind() << "const Halide::GeneratorContext& context,\n";
-    for (auto input : inputs) {
-        std::string type(input->kind() == IOKind::Function ? "Halide::Func" : "Halide::Expr");
-        if (input->is_array()) {
-            type = "const std::vector<" + type + ">&";
-        }
-        stream << ind() << type << " " << input->name() << ",\n";
-    }
-    stream << ind() << "const GeneratorParams& params = GeneratorParams()\n";
+    emit_inputs();
+    stream << ind() << ", const GeneratorParams& params = GeneratorParams()\n";
     indent--;
     stream << ind() << ")\n";
     indent++;
@@ -330,6 +343,46 @@ void WrapperEmitter::emit() {
     }
     indent--;
     stream << ind() << "{\n";
+    stream << ind() << "}\n";
+    stream << "\n";
+
+    stream << ind() << "// templated construction method with inputs\n";
+    stream << ind() << "template<\n";
+    std::string comma = "";
+    indent++;
+    for (auto p : generator_params) {
+        stream << ind() << comma << p->get_template_type() << " " << p->name << " = " << p->get_template_value() << "\n";
+        comma = ", ";
+    }
+    indent--;
+    stream << ind() << ">\n";
+    stream << ind() << "static " << class_name << " make(\n";
+    indent++;
+    emit_inputs();
+    indent--;
+    stream << ind() << ") {\n";
+    indent++;
+    stream << ind() << "GeneratorParams gp(\n";
+    indent++;
+    comma = "";
+    for (auto p : generator_params) {
+        if (p->get_template_type() == "typename") {
+            stream << ind() << comma << "Halide::type_of<" << p->name << ">()\n";
+        } else {
+            stream << ind() << comma << p->name << "\n";
+        }
+        comma = ", ";
+    }
+    indent--;
+    stream << ind() << ");\n";
+    stream << ind() << "return " << class_name << "(context, \n";
+    indent++;
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        stream << ind() << inputs[i]->name() << ",\n";
+    }
+    stream << ind() << "gp);\n";
+    indent--;
+    indent--;
     stream << ind() << "}\n";
     stream << "\n";
 

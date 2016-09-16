@@ -17,6 +17,9 @@ public:
 
     void generate() {
 
+        // Since we need to propagate types passed to us via our own GeneratorParams,
+        // we can't (easily) use the templated constructor; instead, pass on the 
+        // values via the Wrapper's GeneratorParams struct.
         Wrapper::GeneratorParams gp;
         gp.input_type = input_type;
         gp.output_type = output_type;

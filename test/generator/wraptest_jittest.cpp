@@ -27,13 +27,6 @@ Image<Type> MakeImage(int extra) {
     return im;
 }
 
-template<typename Type>
-Func MakeFunc(const Image<Type>& im) {
-    Func f;
-    f(x, y, c) = im(x, y, c);
-    return f;
-}
-
 template<typename InputType, typename OutputType>
 void verify(const Image<InputType> &input, float float_arg, int int_arg, const Image<OutputType> &output) {
     if (input.width() != output.width() ||
@@ -71,12 +64,13 @@ int main(int argc, char **argv) {
     // the Wrapper wants Expr, so make a conversion in place
     std::vector<Expr> int_args_expr(int_args.begin(), int_args.end());
 
-    Wrapper::GeneratorParams gp;
-    gp.input_type = Halide::Float(32);
-    gp.output_type = Halide::Int(16);
-    gp.array_count = kArrayCount;
-    gp.array_count = kArrayCount;
-    Wrapper gen(context, { MakeFunc(src[0]), MakeFunc(src[1]) }, 1.234f, int_args_expr, gp);
+    // We statically know the types we want, so the templated construction method
+    // is most convenient.
+    auto gen = Wrapper::make<float, int16_t, kArrayCount>(
+        context, 
+        { Func(src[0]), Func(src[1]) },
+        1.234f, 
+        int_args_expr);
 
     Wrapper::ScheduleParams sp;
     // This generator default intermediate_level to "undefined", 
