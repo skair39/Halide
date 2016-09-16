@@ -1878,6 +1878,11 @@ protected:
         return generator__ != nullptr; 
     }
 
+    template<typename Ratio>
+    static double ratio_to_double() {
+        return (double)Ratio::num / (double)Ratio::den;
+    }
+
 private:
     // Note that we use a trailing double-underscore for our fixed arg/member names;
     // since is_valid_name() forbids any double-underscores, this ensures we won't

@@ -1,3 +1,4 @@
+#include <cmath>
 #include <fstream>
 #include <set>
 
@@ -115,6 +116,14 @@ Argument to_argument(const Internal::Parameter &param) {
     return Argument(param.name(),
         param.is_buffer() ? Argument::InputBuffer : Argument::InputScalar,
         param.type(), param.dimensions(), def, min, max);
+}
+
+std::pair<int64_t, int64_t> rational_approximation(double d) {
+    if (std::isnan(d)) return {0, 0};
+    if (!std::isfinite(d)) return {(d < 0) ? -1 : 1, 0};
+    // TODO: fix this, it's a horrible unacceptable temporary hack
+    const double kDenom = 1e6;
+    return { (int64_t)(d * kDenom), (int64_t)kDenom };
 }
 
 }  // namespace
@@ -351,7 +360,17 @@ void WrapperEmitter::emit() {
     std::string comma = "";
     indent++;
     for (auto p : generator_params) {
-        stream << ind() << comma << p->get_template_type() << " " << p->name << " = " << p->get_template_value() << "\n";
+        std::string type = p->get_template_type();
+        std::string value = p->get_template_value();
+        if (type == "float" || type == "double") {
+            // floats and doubles can't be used as template value arguments;
+            // to avoid breaking these cases entirely, use std::ratio
+            // as an approximation.
+            auto ratio = rational_approximation(std::atof(value.c_str()));
+            stream << ind() << comma << "typename" << " " << p->name << " = std::ratio<" << ratio.first << ", " << ratio.second << ">\n";
+        } else {
+            stream << ind() << comma << type << " " << p->name << " = " << value << "\n";
+        }
         comma = ", ";
     }
     indent--;
@@ -366,8 +385,11 @@ void WrapperEmitter::emit() {
     indent++;
     comma = "";
     for (auto p : generator_params) {
-        if (p->get_template_type() == "typename") {
+        std::string type = p->get_template_type();
+        if (type == "typename") {
             stream << ind() << comma << "Halide::type_of<" << p->name << ">()\n";
+        } else if (type == "float" || type == "double") {
+            stream << ind() << comma << "ratio_to_double<" << p->name << ">()\n";
         } else {
             stream << ind() << comma << p->name << "\n";
         }
