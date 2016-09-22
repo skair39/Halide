@@ -191,6 +191,7 @@ if (WITH_TEST_GENERATORS)
   halide_add_generator(matlab)
   halide_add_generator(memory_profiler_mandelbrot)
   halide_add_generator(metadata_tester)
+  halide_add_generator(msan)
   halide_add_generator(multitarget)
   halide_add_generator(nested_externs)
   halide_add_generator(paramtest)
@@ -236,6 +237,9 @@ if (WITH_TEST_GENERATORS)
 
   halide_define_aot_test(pyramid
                          GENERATOR_ARGS levels=10)
+
+  halide_define_aot_test(msan
+                         GENERATOR_HALIDE_TARGET host-msan)
 
   # Tests that require additional dependencies
   halide_define_aot_test(metadata_tester

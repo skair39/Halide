@@ -138,6 +138,32 @@ inline std::string halide_looplevel_to_enum_string(const LoopLevel &loop_level){
  * for ahead-of-time filter compilation. */
 EXPORT int generate_filter_main(int argc, char **argv, std::ostream &cerr);
 
+// select_type<> is to std::conditional as switch is to if:
+// it allows a multiway compile-time type definition via the form
+//
+//    select_type<cond<condition1, type1>,
+//                cond<condition2, type2>,
+//                ....
+//                cond<conditionN, typeN>>::type
+//
+// Note that the conditions are evaluated in order; the first evaluating to true
+// is chosen.
+//
+// Note that if no conditions evaluate to true, the resulting type is illegal
+// and will produce a compilation error. (You can provide a default by simply
+// using cond<true, SomeType> as the final entry.)
+template<bool B, typename T>
+struct cond {
+    static constexpr bool value = B;
+    using type = T;
+};
+
+template <typename First, typename... Rest>
+struct select_type : std::conditional<First::value, typename First::type, typename select_type<Rest...>::type> { };
+
+template<typename First>
+struct select_type<First> { using type = typename std::conditional<First::value, typename First::type, void>::type; };
+
 class GeneratorParamBase {
 public:
     EXPORT explicit GeneratorParamBase(const std::string &name);
@@ -149,21 +175,324 @@ protected:
     friend class GeneratorBase;
     friend class WrapperEmitter;
 
-    virtual void from_string(const std::string &value_string) = 0;
+    virtual void set_from_string(const std::string &value_string) = 0;
     virtual std::string to_string() const = 0;
     virtual std::string call_to_string(const std::string &v) const = 0;
-    virtual std::string get_default_value() const = 0;
     virtual std::string get_c_type() const = 0;
-    virtual std::string get_type_decls() const = 0;
-    virtual std::string get_template_type() const = 0;
-    virtual std::string get_template_value() const = 0;
-    virtual bool is_schedule_param() const { return false; }
-    virtual bool is_looplevel_param() const { return false; }
+
+    virtual std::string get_type_decls() const {
+        return "";
+    }
+
+    virtual std::string get_default_value() const {
+        return to_string();
+    }
+
+    virtual std::string get_template_type() const {
+        return get_c_type();
+    }
+
+    virtual std::string get_template_value() const {
+        return get_default_value();
+    }
+
+    virtual bool is_schedule_param() const { 
+        return false; 
+    }
+
+    virtual bool is_looplevel_param() const { 
+        return false; 
+    }
 
 private:
     explicit GeneratorParamBase(const GeneratorParamBase &) = delete;
     void operator=(const GeneratorParamBase &) = delete;
 };
+
+template<typename T>
+class GeneratorParamImpl : public GeneratorParamBase {
+public:
+    explicit GeneratorParamImpl(const std::string &name, const T &value) : GeneratorParamBase(name), value_(value) {}
+
+    T value() const { return value_; }
+
+    operator T() const { return this->value(); }
+    
+    operator Expr() const { return Internal::make_const(type_of<T>(), this->value()); }
+
+    virtual void set(const T &new_value) { value_ = new_value; }
+
+protected:
+    bool is_looplevel_param() const override { 
+        return std::is_same<T, LoopLevel>::value; 
+    }
+
+private:
+    T value_;
+};
+
+// Stubs for type-specific implementations of GeneratorParam, to avoid
+// many complex enable_if<> statements that were formerly spread through the
+// implementation. Note that not all of these need to be templated classes,
+// (e.g. for GeneratorParam_Target, T == Target always), but are declared 
+// that way for symmetry of declaration.
+template<typename T>
+class GeneratorParam_Target : public GeneratorParamImpl<T> {
+public:
+    explicit GeneratorParam_Target(const std::string &name, const T &value) : GeneratorParamImpl<T>(name, value) {}
+
+    void set_from_string(const std::string &new_value_string) override {
+        this->set(Target(new_value_string));
+    }
+
+    std::string to_string() const override {
+        return this->value().to_string();
+    }
+
+    std::string call_to_string(const std::string &v) const override {
+        std::ostringstream oss;
+        oss << v << ".to_string()";
+        return oss.str();
+    }
+
+    std::string get_c_type() const override {
+        return "Halide::Target";
+    }
+};
+
+template<typename T>
+class GeneratorParam_Arithmetic : public GeneratorParamImpl<T> {
+public:
+    explicit GeneratorParam_Arithmetic(const std::string &name, 
+                                       const T &value, 
+                                       const T &min = std::numeric_limits<T>::lowest(), 
+                                       const T &max = std::numeric_limits<T>::max())
+        : GeneratorParamImpl<T>(name, value), min(min), max(max) {
+        // call set() to ensure value is clamped to min/max
+        this->set(value);
+    }
+
+    void set(const T &new_value) override {
+        user_assert(new_value >= min && new_value <= max) << "Value out of range: " << new_value;
+        GeneratorParamImpl<T>::set(new_value);
+    }
+
+    void set_from_string(const std::string &new_value_string) override {
+        std::istringstream iss(new_value_string);
+        T t;
+        iss >> t;
+        user_assert(!iss.fail() && iss.get() == EOF) << "Unable to parse: " << new_value_string;
+        this->set(t);
+    }
+
+    std::string to_string() const override {
+        std::ostringstream oss;
+        oss << this->value();
+        return oss.str();
+    }
+
+    std::string call_to_string(const std::string &v) const override {
+        std::ostringstream oss;
+        oss << "std::to_string(" << v << ")";
+        return oss.str();
+    }
+
+    std::string get_c_type() const override {
+        std::ostringstream oss;
+        if (std::is_same<T, float>::value) {
+            return "float";
+        } else if (std::is_same<T, double>::value) {
+            return "double";
+        } else if (std::is_integral<T>::value) {
+            if (std::is_unsigned<T>::value) oss << 'u';
+            oss << "int" << (sizeof(T) * 8) << "_t";
+            return oss.str();
+        } else {
+            user_error << "Unknown arithmetic type\n";
+            return "";
+        }
+    }
+private:
+    const T min, max;
+};
+
+template<typename T>
+class GeneratorParam_Bool : public GeneratorParam_Arithmetic<T> {
+public:
+    explicit GeneratorParam_Bool(const std::string &name, const T &value) : GeneratorParam_Arithmetic<T>(name, value) {}
+
+    void set_from_string(const std::string &new_value_string) override {
+        bool v = false;
+        if (new_value_string == "true") {
+            v = true;
+        } else if (new_value_string == "false") {
+            v = false;
+        } else {
+            user_assert(false) << "Unable to parse bool: " << new_value_string;
+        }
+        this->set(v);
+    }
+
+    std::string to_string() const override {
+        return this->value() ? "true" : "false";
+    }
+
+    std::string call_to_string(const std::string &v) const override {
+        std::ostringstream oss;
+        oss << "(" << v << ") ? \"true\" : \"false\"";
+        return oss.str();
+    }
+
+    std::string get_c_type() const override {
+        return "bool";
+    }
+};
+
+template<typename T>
+class GeneratorParam_Enum : public GeneratorParamImpl<T> {
+public:
+    explicit GeneratorParam_Enum(const std::string &name, const T &value, const std::map<std::string, T> &enum_map)
+        : GeneratorParamImpl<T>(name, value), enum_map(enum_map) {}
+
+    void set_from_string(const std::string &new_value_string) override {
+        auto it = enum_map.find(new_value_string);
+        user_assert(it != enum_map.end()) << "Enumeration value not found: " << new_value_string;
+        this->set(it->second);
+    }
+
+    std::string to_string() const override {
+        return Internal::enum_to_string(enum_map, this->value());
+    }
+
+    std::string call_to_string(const std::string &v) const override {
+        return "Enum_" + this->name + "_map().at(" + v + ")";
+    }
+
+    std::string get_c_type() const override {
+        return "Enum_" + this->name;
+    }
+
+    std::string get_default_value() const override {
+        return "Enum_" + this->name + "::" + Internal::enum_to_string(enum_map, this->value());
+    }
+
+    std::string get_type_decls() const override {
+        std::ostringstream oss;
+        oss << "enum class Enum_" << this->name << " {\n";
+        for (auto key_value : enum_map) {
+            oss << "  " << key_value.first << ",\n";
+        }
+        oss << "};\n";
+        oss << "\n";
+        // TODO: since we generate the enums, we could probably just use a vector (or array!) rather than a map,
+        // since we can ensure that the enum values are a nice tight range.
+        oss << "NO_INLINE const std::map<Enum_" << this->name << ", std::string>& Enum_" << this->name << "_map() {\n";
+        oss << "  static const std::map<Enum_" << this->name << ", std::string> m = {\n";
+        for (auto key_value : enum_map) {
+            oss << "    { Enum_" << this->name << "::" << key_value.first << ", \"" << key_value.first << "\"},\n";
+        }
+        oss << "  };\n";
+        oss << "  return m;\n";
+        oss << "};\n";
+        return oss.str();
+    }
+
+private:
+    const std::map<std::string, T> enum_map;
+};
+
+template<typename T>
+class GeneratorParam_Type : public GeneratorParam_Enum<T> {
+public:
+    explicit GeneratorParam_Type(const std::string &name, const T &value)
+        : GeneratorParam_Enum<T>(name, value, Internal::get_halide_type_enum_map()) {}
+
+    std::string call_to_string(const std::string &v) const override {
+        return "Halide::Internal::halide_type_to_enum_string(" + v + ")";
+    }
+    std::string get_c_type() const override {
+        return "Halide::Type";
+    }
+    std::string get_template_type() const override {
+        return "typename";
+    }
+    std::string get_template_value() const override {
+        // TODO(srj): improve
+        const std::map<std::string, std::string> m = {
+            { "Halide::Int(8)", "int8_t" },
+            { "Halide::Int(16)", "int16_t" },
+            { "Halide::Int(32)", "int32_t" },
+            { "Halide::Int(64)", "int64_t" },
+            { "Halide::UInt(1)", "bool" },
+            { "Halide::UInt(8)", "uint8_t" },
+            { "Halide::UInt(16)", "uint16_t" },
+            { "Halide::UInt(32)", "uint32_t" },
+            { "Halide::UInt(64)", "uint64_t" },
+            { "Halide::Float(32)", "float" },
+            { "Halide::Float(64)", "double" },
+            { "Halide::Handle(64)", "void*" }
+        };
+        return m.at(get_default_value());
+    }
+    std::string get_default_value() const override {
+        // TODO(srj): improve
+        const std::map<halide_type_code_t, std::string> m = {
+            { halide_type_int, "Int" },
+            { halide_type_uint, "UInt" },
+            { halide_type_float, "Float" },
+            { halide_type_handle, "Handle" },
+        };
+        std::ostringstream oss;
+        oss << "Halide::" << m.at(this->value().code()) << "(" << this->value().bits() << + ")";
+        return oss.str();
+    }
+
+    std::string get_type_decls() const override {
+        return "";
+    }
+};
+
+template<typename T>
+class GeneratorParam_LoopLevel : public GeneratorParam_Enum<T> {
+public:
+    explicit GeneratorParam_LoopLevel(const std::string &name, const std::string &def) 
+        : GeneratorParam_Enum<T>(name, Internal::enum_from_string(get_halide_looplevel_enum_map(), def), Internal::get_halide_looplevel_enum_map()), def(def) {}
+
+    std::string call_to_string(const std::string &v) const override {
+        std::ostringstream oss;
+        oss << "Halide::Internal::halide_looplevel_to_enum_string(" << v << ")";
+        return oss.str();
+    }
+    std::string get_c_type() const override {
+        return "Halide::LoopLevel";
+    }
+
+    std::string get_default_value() const override {
+        if (def == "undefined") return "Halide::Internal::get_halide_undefined_looplevel()";
+        if (def == "root") return "Halide::LoopLevel::root()";
+        if (def == "inline") return "Halide::LoopLevel()";
+        user_error << "LoopLevel value " << def << " not found.\n";
+        return "";
+    }
+
+    std::string get_type_decls() const override {
+        return "";
+    }
+
+private:
+    const std::string def;
+};
+
+template<typename T> 
+using GeneratorParamImplBase =
+    typename Internal::select_type<
+        Internal::cond<std::is_same<T, Target>::value, Internal::GeneratorParam_Target<T>>,
+        Internal::cond<std::is_same<T, Type>::value,   Internal::GeneratorParam_Type<T>>,
+        Internal::cond<std::is_same<T, LoopLevel>::value,   Internal::GeneratorParam_LoopLevel<T>>,
+        Internal::cond<std::is_same<T, bool>::value,   Internal::GeneratorParam_Bool<T>>,
+        Internal::cond<std::is_arithmetic<T>::value,   Internal::GeneratorParam_Arithmetic<T>>,
+        Internal::cond<std::is_enum<T>::value,         Internal::GeneratorParam_Enum<T>>
+    >::type;
 
 }  // namespace Internal
 
@@ -195,480 +524,25 @@ private:
  * No vector Types are currently supported by this mapping.
  *
  */
-template <typename T> class GeneratorParam : public Internal::GeneratorParamBase {
+template <typename T> 
+class GeneratorParam : public Internal::GeneratorParamImplBase<T> {
 public:
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Target>::value>::type * = nullptr>
     GeneratorParam(const std::string &name, const T &value)
-        : GeneratorParamBase(name), value(value), def(value), min(value), max(value) {}
+        : Internal::GeneratorParamImplBase<T>(name, value) {}
 
-    // Note that "is_arithmetic" includes the bool type.
-    template <typename T2 = T,
-              typename std::enable_if<std::is_arithmetic<T2>::value>::type * = nullptr>
-    GeneratorParam(const std::string &name, const T &value)
-        : GeneratorParamBase(name), value(value), def(value), min(std::numeric_limits<T>::lowest()),
-          max(std::numeric_limits<T>::max()) {}
-
-    template <typename T2 = T,
-              typename std::enable_if<std::is_arithmetic<T2>::value &&
-                                      !std::is_same<T2, bool>::value>::type * = nullptr>
     GeneratorParam(const std::string &name, const T &value, const T &min, const T &max)
-        : GeneratorParamBase(name),
-          // Use the set() method so that out-of-range values are checked.
-          // value(std::min(std::max(value, min), max)),
-          def(value), min(min), max(max) {
-        static_assert(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value,
-                      "Only arithmetic types may specify min and max");
-        set(value);
-    }
+        : Internal::GeneratorParamImplBase<T>(name, value, min, max) {}
 
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    GeneratorParam(const std::string &name, const T &value,
-                   const std::map<std::string, T> &enum_map)
-        : GeneratorParamBase(name), value(value), def(value), min(std::numeric_limits<T>::lowest()),
-          max(std::numeric_limits<T>::max()), enum_map(enum_map) {
-        static_assert(std::is_enum<T>::value, "Only enum types may specify value maps");
-    }
+    GeneratorParam(const std::string &name, const T &value, const std::map<std::string, T> &enum_map)
+        : Internal::GeneratorParamImplBase<T>(name, value, enum_map) {}
 
-    // Special-case for Halide::Type, which has a built-in enum map (and no min or max).
-    template <typename T2 = T, typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    GeneratorParam(const std::string &name, const T &value)
-        : GeneratorParamBase(name), value(value), def(value), min(value),
-          max(value), enum_map(Internal::get_halide_type_enum_map()) {
-    }
-
-    // Arithmetic values must fall within the range -- we don't silently clamp.
-    template <typename T2 = T,
-              typename std::enable_if<std::is_arithmetic<T2>::value>::type * = nullptr>
-    void set(const T &new_value) {
-        user_assert(new_value >= min && new_value <= max) << "Value out of range: " << new_value;
-        value = new_value;
-    }
-
-    template <typename T2 = T,
-              typename std::enable_if<!std::is_arithmetic<T2>::value>::type * = nullptr>
-    void set(const T &new_value) {
-        value = new_value;
-    }
-
-    operator T() const { return value; }
-    operator Expr() const { return Internal::make_const(type_of<T>(), value); }
-
-protected:
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    GeneratorParam(const std::string &name, const std::string &value_string)
-        : GeneratorParamBase(name), 
-          value(Internal::enum_from_string(Internal::get_halide_looplevel_enum_map(), value_string)),
-          def(value),
-          enum_map(Internal::get_halide_looplevel_enum_map()) {
-    }
-
-    void from_string(const std::string &new_value_string) override {
-        // delegate to a function that we can specialize based on the template argument
-        set(from_string_impl(new_value_string));
-    }
-
-    std::string to_string() const override {
-        // delegate to a function that we can specialize based on the template argument
-        return to_string_impl(value);
-    }
-
-    std::string call_to_string(const std::string &v) const override {
-        // delegate to a function that we can specialize based on the template argument
-        return call_to_string_impl(v);
-    }
-
-    std::string get_default_value() const override {
-        // delegate to a function that we can specialize based on the template argument
-        return get_default_value_impl();
-    }
-
-    std::string get_c_type() const override {
-        // delegate to a function that we can specialize based on the template argument
-        return get_c_type_impl();
-    }
-
-    std::string get_type_decls() const override {
-        // delegate to a function that we can specialize based on the template argument
-        return get_type_decls_impl();
-    }
-    
-    std::string get_template_type() const override {
-        // delegate to a function that we can specialize based on the template argument
-        return get_template_type_impl();
-    }
-
-    std::string get_template_value() const override {
-        // delegate to a function that we can specialize based on the template argument
-        return get_template_value_impl();
-    }
-
-private:
-    T value;
-    const T def, min, max;                      // only for arithmetic types
-    const std::map<std::string, T> enum_map;    // only for enum-like Types
-
-    // Note that none of the string conversions are static:
-    // the specializations for enum require access to enum_map
-
-    // string conversions: Target
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        return Target(s);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return t.to_string();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        std::ostringstream oss;
-        oss << v << ".to_string()";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        return "Halide::Target";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        internal_error << "Unimplemented";
-        return "";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        internal_error << "Unimplemented";
-        return "";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Target>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        return def.to_string();
-    }
-
-    // string conversions: Type
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        return Internal::enum_from_string(enum_map, s);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return Internal::enum_to_string(enum_map, t);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        std::ostringstream oss;
-        oss << "Halide::Internal::halide_type_to_enum_string(" << v << ")";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        return "Halide::Type";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        return "typename";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        // TODO(srj): improve
-        const std::map<std::string, std::string> m = {
-            { "Halide::Int(8)", "int8_t" },
-            { "Halide::Int(16)", "int16_t" },
-            { "Halide::Int(32)", "int32_t" },
-            { "Halide::Int(64)", "int64_t" },
-            { "Halide::UInt(1)", "bool" },
-            { "Halide::UInt(8)", "uint8_t" },
-            { "Halide::UInt(16)", "uint16_t" },
-            { "Halide::UInt(32)", "uint32_t" },
-            { "Halide::UInt(64)", "uint64_t" },
-            { "Halide::Float(32)", "float" },
-            { "Halide::Float(64)", "double" },
-            { "Halide::Handle(64)", "void*" }
-        };
-        return m.at(get_default_value_impl());
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, Halide::Type>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        const std::map<halide_type_code_t, std::string> m = {
-            { halide_type_int, "Int" },
-            { halide_type_uint, "UInt" },
-            { halide_type_float, "Float" },
-            { halide_type_handle, "Handle" },
-        };
-        std::ostringstream oss;
-        oss << "Halide::" << m.at(def.code()) << "(" << def.bits() << + ")";
-        return oss.str();
-    }
-
-    // string conversions: bool
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        if (s == "true") return true;
-        if (s == "false") return false;
-        user_assert(false) << "Unable to parse bool: " << s;
-        return false;
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return t ? "true" : "false";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        std::ostringstream oss;
-        oss << "(" << v << ") ? \"true\" : \"false\"";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        return "bool";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        return get_c_type_impl();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        return get_default_value_impl();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        return def ? "true" : "false";
-    }
-
-    // string conversions: integer
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        std::istringstream iss(s);
-        T t;
-        iss >> t;
-        user_assert(!iss.fail() && iss.get() == EOF) << "Unable to parse integer: " << s;
-        return t;
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return std::to_string(t);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        std::ostringstream oss;
-        oss << "std::to_string(" << v << ")";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        std::ostringstream oss;
-        if (std::is_unsigned<T>::value) oss << 'u';
-        oss << "int" << (sizeof(T) * 8) << "_t";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        return get_c_type_impl();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        return get_default_value_impl();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_integral<T2>::value && !std::is_same<T2, bool>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        return std::to_string(def);
-    }
-
-    // string conversions: float
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        std::istringstream iss(s);
-        T t;
-        iss >> t;
-        user_assert(!iss.fail() && iss.get() == EOF) << "Unable to parse float: " << s;
-        return t;
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return std::to_string(t);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        std::ostringstream oss;
-        oss << "std::to_string(" << v << ")";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        if (std::is_same<T, float>::value) {
-            return "float";
-        } else if (std::is_same<T, double>::value) {
-            return "double";
-        } else {
-            user_error << "Unknown float type\n";
-            return "";
-        }
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        return get_c_type_impl();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        return get_default_value_impl();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_floating_point<T2>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        return std::to_string(def);
-    }
-
-    // string conversions: enum
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        return Internal::enum_from_string(enum_map, s);
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return "Enum_" + name + "::" + Internal::enum_to_string(enum_map, t);
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        return "Enum_" + name + "_map().at(" + v + ")";
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        return "Enum_" + name;
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        return get_c_type_impl();
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        return get_default_value_impl();
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        return to_string_impl(def);
-    }
-    template <typename T2 = T, typename std::enable_if<std::is_enum<T2>::value>::type * = nullptr>
-    std::string get_type_decls_impl() const {
-        std::ostringstream oss;
-        oss << "enum class Enum_" << name << " {\n";
-        for (auto key_value : enum_map) {
-            oss << "  " << key_value.first << ",\n";
-        }
-        oss << "};\n";
-        oss << "\n";
-        // TODO: since we generate the enums, we could probably just use a vector (or array!) rather than a map,
-        // since we can ensure that the enum values are a nice tight range.
-        oss << "NO_INLINE const std::map<Enum_" << name << ", std::string>& Enum_" << name << "_map() {\n";
-        oss << "  static const std::map<Enum_" << name << ", std::string> m = {\n";
-        for (auto key_value : enum_map) {
-            oss << "    { Enum_" << name << "::" << key_value.first << ", \"" << key_value.first << "\"},\n";
-        }
-        oss << "  };\n";
-        oss << "  return m;\n";
-        oss << "};\n";
-        return oss.str();
-    }
-
-    // string conversions: LoopLevel
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    T from_string_impl(const std::string &s) const {
-        return Internal::enum_from_string(enum_map, s);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    std::string to_string_impl(const T& t) const {
-        return Internal::enum_to_string(enum_map, t);
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    std::string call_to_string_impl(const std::string &v) const {
-        std::ostringstream oss;
-        oss << "Halide::Internal::halide_looplevel_to_enum_string(" << v << ")";
-        return oss.str();
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    std::string get_c_type_impl() const {
-        return "Halide::LoopLevel";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    std::string get_template_type_impl() const {
-        internal_error << "Unimplemented";
-        return "";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    std::string get_template_value_impl() const {
-        internal_error << "Unimplemented";
-        return "";
-    }
-    template <typename T2 = T,
-              typename std::enable_if<std::is_same<T2, LoopLevel>::value>::type * = nullptr>
-    std::string get_default_value_impl() const {
-        if (def == Internal::get_halide_undefined_looplevel()) return "Halide::Internal::get_halide_undefined_looplevel()";
-        if (def.is_root()) return "Halide::LoopLevel::root()";
-        if (def.is_inline()) return "Halide::LoopLevel()";
-        user_error << "LoopLevel value not found.\n";
-        return "";
-    }
-
-    // Non-enums don't need this
-    template <typename T2 = T, typename std::enable_if<!std::is_enum<T2>::value>::type * = nullptr>
-    std::string get_type_decls_impl() const {
-        return "";
-    }
-
-private:
-    explicit GeneratorParam(const GeneratorParam &) = delete;
-    void operator=(const GeneratorParam &) = delete;
+    GeneratorParam(const std::string &name, const std::string &value)
+        : Internal::GeneratorParamImplBase<T>(name, value) {}
 };
 
 template <typename T> 
 class ScheduleParam : public GeneratorParam<T> {
 public:
-    explicit ScheduleParam(const char *name)
-        : GeneratorParam<T>(name) {}
-
-    explicit ScheduleParam(const std::string &name)
-        : GeneratorParam<T>(name) {}
-
     ScheduleParam(const std::string &name, const T &value)
         : GeneratorParam<T>(name, value) {}
 
@@ -680,7 +554,6 @@ public:
 
 protected:
     bool is_schedule_param() const override { return true; }
-    bool is_looplevel_param() const override { return std::is_same<T, LoopLevel>::value; }
 };
 
 /** Addition between GeneratorParam<T> and any type that supports operator+ with T.
@@ -1482,7 +1355,6 @@ public:
 
     EXPORT void set_generator_param_values(const std::map<std::string, std::string> &params, 
                                            const std::map<std::string, LoopLevel> &looplevel_params = {});
-
 
     /** Given a data type, return an estimate of the "natural" vector size
      * for that data type when compiling for the current target. */

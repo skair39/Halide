@@ -423,6 +423,6 @@ inline Type type_of() {
     return Type(halide_type_of<T>(), halide_handle_traits<T>::type_info());
 }
 
-}
+}  // namespace Halide
 
 #endif

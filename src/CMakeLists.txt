@@ -50,6 +50,8 @@ set(RUNTIME_CPP
   mips_cpu_features
   module_aot_ref_count
   module_jit_ref_count
+  msan
+  msan_stubs
   nacl_host_cpu_count
   noos
   opencl
