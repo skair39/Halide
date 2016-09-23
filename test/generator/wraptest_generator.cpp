@@ -9,7 +9,7 @@ public:
     GeneratorParam<Type> input_type{ "input_type", UInt(8) };
     GeneratorParam<Type> output_type{ "output_type", Float(32) };
     GeneratorParam<int> array_count{ "array_count", 2 };
-    GeneratorParam<float> float_param{ "float_param", 3.1415f };
+    GeneratorParam<float> float_param{ "float_param", 3.1415926535f };
     GeneratorParam<BagType> bag_type{ "bag_type",
                                       BagType::Paper,
                                       { { "paper", BagType::Paper },

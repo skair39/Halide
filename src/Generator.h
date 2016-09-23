@@ -132,6 +132,14 @@ inline std::string halide_looplevel_to_enum_string(const LoopLevel &loop_level){
     return enum_to_string(get_halide_looplevel_enum_map(), loop_level);
 }
 
+// Convert a Halide Type into a string representation of its C source.
+// e.g., Int(32) -> "Halide::Int(32)"
+std::string halide_type_to_c_source(const Type &t);
+
+// Convert a Halide Type into a string representation of its C Source.
+// e.g., Int(32) -> "int32_t"
+std::string halide_type_to_c_type(const Type &t);
+
 /** generate_filter_main() is a convenient wrapper for GeneratorRegistry::create() +
  * compile_to_files();
  * it can be trivially wrapped by a "real" main() to produce a command-line utility
@@ -312,6 +320,7 @@ public:
             return "";
         }
     }
+
 private:
     const T min, max;
 };
@@ -384,9 +393,10 @@ public:
         }
         oss << "};\n";
         oss << "\n";
+
         // TODO: since we generate the enums, we could probably just use a vector (or array!) rather than a map,
         // since we can ensure that the enum values are a nice tight range.
-        oss << "NO_INLINE const std::map<Enum_" << this->name << ", std::string>& Enum_" << this->name << "_map() {\n";
+        oss << "inline NO_INLINE const std::map<Enum_" << this->name << ", std::string>& Enum_" << this->name << "_map() {\n";
         oss << "  static const std::map<Enum_" << this->name << ", std::string> m = {\n";
         for (auto key_value : enum_map) {
             oss << "    { Enum_" << this->name << "::" << key_value.first << ", \"" << key_value.first << "\"},\n";
@@ -410,41 +420,21 @@ public:
     std::string call_to_string(const std::string &v) const override {
         return "Halide::Internal::halide_type_to_enum_string(" + v + ")";
     }
+
     std::string get_c_type() const override {
         return "Halide::Type";
     }
+
     std::string get_template_type() const override {
         return "typename";
     }
+
     std::string get_template_value() const override {
-        // TODO(srj): improve
-        const std::map<std::string, std::string> m = {
-            { "Halide::Int(8)", "int8_t" },
-            { "Halide::Int(16)", "int16_t" },
-            { "Halide::Int(32)", "int32_t" },
-            { "Halide::Int(64)", "int64_t" },
-            { "Halide::UInt(1)", "bool" },
-            { "Halide::UInt(8)", "uint8_t" },
-            { "Halide::UInt(16)", "uint16_t" },
-            { "Halide::UInt(32)", "uint32_t" },
-            { "Halide::UInt(64)", "uint64_t" },
-            { "Halide::Float(32)", "float" },
-            { "Halide::Float(64)", "double" },
-            { "Halide::Handle(64)", "void*" }
-        };
-        return m.at(get_default_value());
+        return halide_type_to_c_type(this->value());
     }
+
     std::string get_default_value() const override {
-        // TODO(srj): improve
-        const std::map<halide_type_code_t, std::string> m = {
-            { halide_type_int, "Int" },
-            { halide_type_uint, "UInt" },
-            { halide_type_float, "Float" },
-            { halide_type_handle, "Handle" },
-        };
-        std::ostringstream oss;
-        oss << "Halide::" << m.at(this->value().code()) << "(" << this->value().bits() << + ")";
-        return oss.str();
+        return halide_type_to_c_source(this->value());
     }
 
     std::string get_type_decls() const override {
@@ -1642,7 +1632,6 @@ public:
 
 namespace Internal {
 
-// TODO(srj): de-inline as needed
 class GeneratorWrapper {
 public:
     // default ctor
@@ -1713,14 +1702,6 @@ protected:
         generator__->set_inputs(inputs);
         generator__->call_generate();
     }
-
-    // template <typename... Args>
-    // GeneratorWrapper(const GeneratorContext &context,
-    //         GeneratorFactory generator_factory,
-    //         const std::map<std::string, std::string> &generator_params,
-    //         Args&&... args) 
-    //     : GeneratorWrapper(context, generator_factory, {std::forward<Args>(args)...}) {
-    // }
 
     // Output(s)
     // TODO: identify vars used

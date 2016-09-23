@@ -121,9 +121,13 @@ Argument to_argument(const Internal::Parameter &param) {
 std::pair<int64_t, int64_t> rational_approximation(double d) {
     if (std::isnan(d)) return {0, 0};
     if (!std::isfinite(d)) return {(d < 0) ? -1 : 1, 0};
-    // TODO: fix this, it's a horrible unacceptable temporary hack
-    const double kDenom = 1e6;
-    return { (int64_t)(d * kDenom), (int64_t)kDenom };
+    // TODO: fix this abomination to something more intelligent
+    const double kDenom = 1e9;
+    const int64_t num = (int64_t)(d * kDenom);
+    const int64_t den = (int64_t)kDenom;
+    user_assert(std::abs((double)num / (double)den - kDenom) <= kDenom) 
+        << "The value " << d << " cannot be accurately approximated as a ratio\n";
+    return { num, den };
 }
 
 }  // namespace
@@ -211,7 +215,7 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
     stream << ind() << "}\n";
     stream << "\n";
 
-    stream << ind() << "NO_INLINE std::map<std::string, std::string> to_string_map() const {\n";
+    stream << ind() << "inline NO_INLINE std::map<std::string, std::string> to_string_map() const {\n";
     indent++;
     stream << ind() << "std::map<std::string, std::string> m;\n";
     for (auto p : v) {
@@ -225,7 +229,7 @@ void WrapperEmitter::emit_params_struct(bool is_schedule_params) {
 
     if (is_schedule_params) {
         stream << "\n";
-        stream << ind() << "NO_INLINE std::map<std::string, Halide::LoopLevel> to_looplevel_map() const {\n";
+        stream << ind() << "inline NO_INLINE std::map<std::string, Halide::LoopLevel> to_looplevel_map() const {\n";
         indent++;
         stream << ind() << "std::map<std::string, Halide::LoopLevel> m;\n";
         for (auto p : v) {
@@ -364,8 +368,9 @@ void WrapperEmitter::emit() {
         std::string value = p->get_template_value();
         if (type == "float" || type == "double") {
             // floats and doubles can't be used as template value arguments;
-            // to avoid breaking these cases entirely, use std::ratio
-            // as an approximation.
+            // it turns out to be pretty uncommon use floating point types
+            // in GeneratorParams, but to avoid breaking these cases entirely, 
+            // use std::ratio as an approximation for the default value.
             auto ratio = rational_approximation(std::atof(value.c_str()));
             stream << ind() << comma << "typename" << " " << p->name << " = std::ratio<" << ratio.first << ", " << ratio.second << ">\n";
         } else {
@@ -504,19 +509,50 @@ void verify_same_funcs(const std::vector<Func>& a, const std::vector<Func>& b) {
     }
 }
 
-const std::map<std::string, Halide::Type> &get_halide_type_enum_map() {
-    static const std::map<std::string, Halide::Type> halide_type_enum_map{
-        {"bool", Halide::Bool()},
-        {"int8", Halide::Int(8)},
-        {"int16", Halide::Int(16)},
-        {"int32", Halide::Int(32)},
-        {"uint8", Halide::UInt(8)},
-        {"uint16", Halide::UInt(16)},
-        {"uint32", Halide::UInt(32)},
-        {"float32", Halide::Float(32)},
-        {"float64", Halide::Float(64)}
+const std::map<std::string, Type> &get_halide_type_enum_map() {
+    static const std::map<std::string, Type> halide_type_enum_map{
+        {"bool", Bool()},
+        {"int8", Int(8)},
+        {"int16", Int(16)},
+        {"int32", Int(32)},
+        {"uint8", UInt(8)},
+        {"uint16", UInt(16)},
+        {"uint32", UInt(32)},
+        {"float32", Float(32)},
+        {"float64", Float(64)}
     };
     return halide_type_enum_map;
+}
+
+std::string halide_type_to_c_source(const Type &t) {
+    static const std::map<halide_type_code_t, std::string> m = {
+        { halide_type_int, "Int" },
+        { halide_type_uint, "UInt" },
+        { halide_type_float, "Float" },
+        { halide_type_handle, "Handle" },
+    };
+    std::ostringstream oss;
+    oss << "Halide::" << m.at(t.code()) << "(" << t.bits() << + ")";
+    return oss.str();
+}
+
+std::string halide_type_to_c_type(const Type &t) {
+    auto encode = [](const Type &t) -> int { return t.code() << 16 | t.bits(); };
+    static const std::map<int, std::string> m = {
+        { encode(Int(8)), "int8_t" },
+        { encode(Int(16)), "int16_t" },
+        { encode(Int(32)), "int32_t" },
+        { encode(Int(64)), "int64_t" },
+        { encode(UInt(1)), "bool" },
+        { encode(UInt(8)), "uint8_t" },
+        { encode(UInt(16)), "uint16_t" },
+        { encode(UInt(32)), "uint32_t" },
+        { encode(UInt(64)), "uint64_t" },
+        { encode(Float(32)), "float" },
+        { encode(Float(64)), "double" },
+        { encode(Handle(64)), "void*" }
+    };
+    return m.at(encode(t));
 }
 
 LoopLevel get_halide_undefined_looplevel() {
