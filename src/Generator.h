@@ -786,13 +786,6 @@ using ArraySizeArg = ArgWithParam<int>;
 
 class GIOBase {
 public:
-    GIOBase(const ArraySizeArg &array_size, 
-            const std::string &name, 
-            IOKind kind,
-            const std::vector<TypeArg> &types,
-            const DimensionArg &dimensions);
-    ~GIOBase();
-
     size_t array_size() const { return (size_t) array_size_.value(); }
     virtual bool is_array() const { internal_error << "Unimplemented"; return false; }
 
@@ -820,6 +813,13 @@ public:
     }
 
 protected:
+    GIOBase(const ArraySizeArg &array_size, 
+            const std::string &name, 
+            IOKind kind,
+            const std::vector<TypeArg> &types,
+            const DimensionArg &dimensions);
+    virtual ~GIOBase();
+
     friend class GeneratorBase;
 
     ArraySizeArg array_size_;  // always 1 if is_array() == false
@@ -856,7 +856,7 @@ inline const std::vector<Func> &GIOBase::get_values<Func>() const {
 }
 
 class GeneratorInputBase : public GIOBase {
-public:
+protected:
     GeneratorInputBase(const ArraySizeArg &array_size,
                        const std::string &name, 
                        IOKind kind, 
@@ -866,9 +866,8 @@ public:
     GeneratorInputBase(const std::string &name, IOKind kind, const TypeArg &t, const DimensionArg &d)
       : GeneratorInputBase(ArraySizeArg(1), name, kind, t, d) {}
 
-    ~GeneratorInputBase();
+    ~GeneratorInputBase() override;
 
-protected:
     friend class GeneratorBase;
 
     std::vector<Parameter> parameters_;
@@ -883,9 +882,6 @@ protected:
     void verify_internals() const override;
 
 private:
-    explicit GeneratorInputBase(const GeneratorInputBase &) = delete;
-    void operator=(const GeneratorInputBase &) = delete;
-
     void init_parameters();
 };
 
@@ -954,7 +950,9 @@ template<typename T>
 class GeneratorInput_Func : public GeneratorInputImpl<T, Func> {
 private:
     using Super = GeneratorInputImpl<T, Func>;
-    using TBase = typename std::remove_all_extents<T>::type;
+
+protected:
+    using TBase = typename Super::TBase;
 
 public:
     GeneratorInput_Func(const std::string &name, const TypeArg &t, const DimensionArg &d)
@@ -984,7 +982,8 @@ template<typename T>
 class GeneratorInput_Scalar : public GeneratorInputImpl<T, Expr> {
 private:
     using Super = GeneratorInputImpl<T, Expr>;
-    using TBase = typename std::remove_all_extents<T>::type;
+protected:
+    using TBase = typename Super::TBase;
 
     const TBase def_{TBase()};
 
@@ -1026,7 +1025,8 @@ template<typename T>
 class GeneratorInput_Arithmetic : public GeneratorInput_Scalar<T> {
 private:
     using Super = GeneratorInput_Scalar<T>;
-    using TBase = typename std::remove_all_extents<T>::type;
+protected:
+    using TBase = typename Super::TBase;
 
     const Expr min_, max_;
 
@@ -1084,7 +1084,8 @@ template <typename T>
 class GeneratorInput : public Internal::GeneratorInputImplBase<T> {
 private:
     using Super = Internal::GeneratorInputImplBase<T>;
-    using TBase = typename std::remove_all_extents<T>::type;
+protected:
+    using TBase = typename Super::TBase;
 
 public:
     GeneratorInput(const std::string &name, 
@@ -1121,7 +1122,7 @@ public:
 namespace Internal {
 
 class GeneratorOutputBase : public GIOBase {
-public:
+protected:
     GeneratorOutputBase(const ArraySizeArg &array_size, 
                         const std::string &name, 
                         const std::vector<TypeArg> &t, 
@@ -1132,142 +1133,161 @@ public:
                         const DimensionArg& d)
       : GeneratorOutputBase(ArraySizeArg(1), name, t, d) {}
 
-    ~GeneratorOutputBase();
+    ~GeneratorOutputBase() override;
 
-protected:
     friend class GeneratorBase;
 
     void init_internals();
-
-private:
-    explicit GeneratorOutputBase(const GeneratorOutputBase &) = delete;
-    void operator=(const GeneratorOutputBase &) = delete;
 };
 
-}  // namespace Internal
-
 template<typename T>
-class GeneratorOutput : public Internal::GeneratorOutputBase {
-private:
-
+class GeneratorOutputImpl : public GeneratorOutputBase {
 protected:
+    using TBase = typename std::remove_all_extents<T>::type;
+    using ValueType = Func;
+
     bool is_array() const override {
         return std::is_array<T>::value;
     }
 
-public:
-    /** Construct a "scalar" Output of type T with the given name. */
-    // @{
     template <typename T2 = T, typename std::enable_if<
-        // Only allow scalar non-pointer types
-        std::is_arithmetic<T2>::value && 
-        !std::is_pointer<T2>::value
+        // Only allow T2 not-an-array
+        !std::is_array<T2>::value
     >::type * = nullptr>
-    explicit GeneratorOutput(const std::string &name) 
-        : GeneratorOutputBase(name, {type_of<T>()}, 0) {
-    }
-
-    explicit GeneratorOutput(const char *name) 
-        : GeneratorOutput(std::string(name)) {}
-    // @}
-
-    /** Construct a "scalar" Array Output of type T with the given name. */
-    // @{
-    template <typename T2 = T, typename std::enable_if<
-        // Only allow T2[]
-        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
-        // Only allow scalar non-pointer types
-        std::is_arithmetic<typename std::remove_all_extents<T2>::type>::value && 
-        !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
-    >::type * = nullptr>
-    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name) 
-        : GeneratorOutputBase(array_size, name, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
-    }
-
-    template <typename T2 = T, typename std::enable_if<
-        // Only allow T2[kSomeConst]
-        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
-        // Only allow scalar non-pointer types
-        std::is_arithmetic<typename std::remove_all_extents<T2>::type>::value && 
-        !std::is_pointer<typename std::remove_all_extents<T2>::type>::value
-    >::type * = nullptr>
-    GeneratorOutput(const std::string &name) 
-        : GeneratorOutputBase(Internal::ArraySizeArg(std::extent<T2, 0>::value), name, {type_of<typename std::remove_all_extents<T2>::type>()}, 0) {
-    }
-    // @}
-
-    /** Construct an Output with the given name, type(s), and dimension. */
-    template <typename T2 = T, typename std::enable_if<std::is_same<T2, Func>::value>::type * = nullptr>
-    GeneratorOutput(const std::string &name, const Internal::TypeArgVector &t, const Internal::DimensionArg &d)
+    GeneratorOutputImpl(const std::string &name, const TypeArgVector &t, const DimensionArg &d)
         : GeneratorOutputBase(name, t.v, d) {
     }
 
-    /** Construct an Array Output with the given name, type (Tuple), and dimension. */
-    // @{
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[kSomeConst]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0)
+    >::type * = nullptr>
+    GeneratorOutputImpl(const std::string &name, const TypeArgVector &t, const DimensionArg &d)
+        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), name, t.v, d) {
+    }
+
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
-        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0 &&
-        // Only allow Func
-        std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0
     >::type * = nullptr>
-    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name, const Internal::TypeArgVector &t, const Internal::DimensionArg &d)
+    GeneratorOutputImpl(const ArraySizeArg &array_size, const std::string &name, const TypeArgVector &t, const DimensionArg &d)
         : GeneratorOutputBase(array_size, name, t.v, d) {
     }
 
-    template <typename T2 = T, typename std::enable_if<
-        // Only allow T2[kSomeConst]
-        std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0) &&
-        // Only allow Func
-        std::is_same<Func, typename std::remove_all_extents<T2>::type>::value
-    >::type * = nullptr>
-    GeneratorOutput(const std::string &name, const Internal::TypeArgVector &t, const Internal::DimensionArg &d)
-        : GeneratorOutputBase(Internal::ArraySizeArg(std::extent<T2, 0>::value), name, t.v, d) {
-    }
-    // @}
-
+public:
     template <typename... Args, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(Args&&... args) const {
-        return funcs().at(0)(std::forward<Args>(args)...);
+        return get_values<ValueType>().at(0)(std::forward<Args>(args)...);
     }
 
     template <typename ExprOrVar, typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     FuncRef operator()(std::vector<ExprOrVar> args) const {
-        return funcs().at(0)(args);
+        return get_values<ValueType>().at(0)(args);
     }
 
     template <typename T2 = T, typename std::enable_if<!std::is_array<T2>::value>::type * = nullptr>
     operator class Func() const { 
-        return funcs().at(0); 
+        return get_values<ValueType>().at(0); 
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
     size_t size() const {
-        return funcs().size();
+        return get_values<ValueType>().size();
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
-    Func operator[](size_t i) const {
-        return funcs()[i];
+    ValueType operator[](size_t i) const {
+        return get_values<ValueType>()[i];
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
-    Func at(size_t i) const {
-        return funcs().at(i);
+    ValueType at(size_t i) const {
+        return get_values<ValueType>().at(i);
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
-    typename std::vector<Func>::const_iterator begin() const {
-        return funcs().begin();
+    typename std::vector<ValueType>::const_iterator begin() const {
+        return get_values<ValueType>().begin();
     }
 
     template <typename T2 = T, typename std::enable_if<std::is_array<T2>::value>::type * = nullptr>
-    typename std::vector<Func>::const_iterator end() const {
-        return funcs().end();
+    typename std::vector<ValueType>::const_iterator end() const {
+        return get_values<ValueType>().end();
     }
+};
 
+template<typename T>
+class GeneratorOutput_Func : public GeneratorOutputImpl<T> {
 private:
-    explicit GeneratorOutput(const GeneratorOutput &) = delete;
-    void operator=(const GeneratorOutput &) = delete;
+    using Super = GeneratorOutputImpl<T>;
+
+protected:
+    using TBase = typename Super::TBase;
+
+protected:
+    GeneratorOutput_Func(const std::string &name, const TypeArgVector &t, const DimensionArg &d)
+        : Super(name, t, d) {
+    }
+
+    GeneratorOutput_Func(const ArraySizeArg &array_size, const std::string &name, const TypeArgVector &t, const DimensionArg &d)
+        : Super(array_size, name, t, d) {
+    }
+};
+
+
+template<typename T>
+class GeneratorOutput_Arithmetic : public GeneratorOutputImpl<T> {
+private:
+    using Super = GeneratorOutputImpl<T>;
+protected:
+    using TBase = typename Super::TBase;
+
+protected:
+    explicit GeneratorOutput_Arithmetic(const std::string &name) 
+        : Super(name, {type_of<TBase>()}, 0) {
+    }
+
+    GeneratorOutput_Arithmetic(const ArraySizeArg &array_size, const std::string &name) 
+        : Super(array_size, name, {type_of<TBase>()}, 0) {
+    }
+};
+
+template<typename T, typename TBase = typename std::remove_all_extents<T>::type> 
+using GeneratorOutputImplBase =
+    typename select_type<
+        cond<std::is_same<TBase, Func>::value, GeneratorOutput_Func<T>>,
+        cond<std::is_arithmetic<TBase>::value, GeneratorOutput_Arithmetic<T>>
+    >::type;
+
+}  // namespace Internal
+
+template <typename T> 
+class GeneratorOutput : public Internal::GeneratorOutputImplBase<T> {
+private:
+    using Super = Internal::GeneratorOutputImplBase<T>;
+protected:
+    using TBase = typename Super::TBase;
+
+public:
+    explicit GeneratorOutput(const std::string &name) 
+        : Super(name) {
+    }
+
+    explicit GeneratorOutput(const char *name) 
+        : GeneratorOutput(std::string(name)) {
+    }
+
+    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name) 
+        : Super(array_size, name) {
+    }
+
+    GeneratorOutput(const std::string &name, const Internal::TypeArgVector &t, const Internal::DimensionArg &d)
+        : Super(name, t, d) {
+    }
+
+    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name, const Internal::TypeArgVector &t, const Internal::DimensionArg &d)
+        : Super(array_size, name, t, d) {
+    }
 };
 
 class NamesInterface {
