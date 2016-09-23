@@ -226,7 +226,7 @@ public:
 
     operator T() const { return this->value(); }
     
-    operator Expr() const { return Internal::make_const(type_of<T>(), this->value()); }
+    operator Expr() const { return make_const(type_of<T>(), this->value()); }
 
     virtual void set(const T &new_value) { value_ = new_value; }
 
@@ -370,7 +370,7 @@ public:
     }
 
     std::string to_string() const override {
-        return Internal::enum_to_string(enum_map, this->value());
+        return enum_to_string(enum_map, this->value());
     }
 
     std::string call_to_string(const std::string &v) const override {
@@ -382,7 +382,7 @@ public:
     }
 
     std::string get_default_value() const override {
-        return "Enum_" + this->name + "::" + Internal::enum_to_string(enum_map, this->value());
+        return "Enum_" + this->name + "::" + enum_to_string(enum_map, this->value());
     }
 
     std::string get_type_decls() const override {
@@ -415,7 +415,7 @@ template<typename T>
 class GeneratorParam_Type : public GeneratorParam_Enum<T> {
 public:
     explicit GeneratorParam_Type(const std::string &name, const T &value)
-        : GeneratorParam_Enum<T>(name, value, Internal::get_halide_type_enum_map()) {}
+        : GeneratorParam_Enum<T>(name, value, get_halide_type_enum_map()) {}
 
     std::string call_to_string(const std::string &v) const override {
         return "Halide::Internal::halide_type_to_enum_string(" + v + ")";
@@ -446,7 +446,7 @@ template<typename T>
 class GeneratorParam_LoopLevel : public GeneratorParam_Enum<T> {
 public:
     explicit GeneratorParam_LoopLevel(const std::string &name, const std::string &def) 
-        : GeneratorParam_Enum<T>(name, Internal::enum_from_string(get_halide_looplevel_enum_map(), def), Internal::get_halide_looplevel_enum_map()), def(def) {}
+        : GeneratorParam_Enum<T>(name, enum_from_string(get_halide_looplevel_enum_map(), def), get_halide_looplevel_enum_map()), def(def) {}
 
     std::string call_to_string(const std::string &v) const override {
         std::ostringstream oss;
@@ -475,13 +475,13 @@ private:
 
 template<typename T> 
 using GeneratorParamImplBase =
-    typename Internal::select_type<
-        Internal::cond<std::is_same<T, Target>::value, Internal::GeneratorParam_Target<T>>,
-        Internal::cond<std::is_same<T, Type>::value,   Internal::GeneratorParam_Type<T>>,
-        Internal::cond<std::is_same<T, LoopLevel>::value,   Internal::GeneratorParam_LoopLevel<T>>,
-        Internal::cond<std::is_same<T, bool>::value,   Internal::GeneratorParam_Bool<T>>,
-        Internal::cond<std::is_arithmetic<T>::value,   Internal::GeneratorParam_Arithmetic<T>>,
-        Internal::cond<std::is_enum<T>::value,         Internal::GeneratorParam_Enum<T>>
+    typename select_type<
+        cond<std::is_same<T, Target>::value,    GeneratorParam_Target<T>>,
+        cond<std::is_same<T, Type>::value,      GeneratorParam_Type<T>>,
+        cond<std::is_same<T, LoopLevel>::value, GeneratorParam_LoopLevel<T>>,
+        cond<std::is_same<T, bool>::value,      GeneratorParam_Bool<T>>,
+        cond<std::is_arithmetic<T>::value,      GeneratorParam_Arithmetic<T>>,
+        cond<std::is_enum<T>::value,            GeneratorParam_Enum<T>>
     >::type;
 
 }  // namespace Internal
@@ -779,10 +779,10 @@ struct ArgWithParamVector {
     ArgWithParamVector(std::initializer_list<ArgWithParam<T>> t) : v(t) {}
 };
 
-using TypeArg = Internal::ArgWithParam<Type>;
-using TypeArgVector = Internal::ArgWithParamVector<Type>;
-using DimensionArg = Internal::ArgWithParam<int>;
-using ArraySizeArg = Internal::ArgWithParam<int>;
+using TypeArg = ArgWithParam<Type>;
+using TypeArgVector = ArgWithParamVector<Type>;
+using DimensionArg = ArgWithParam<int>;
+using ArraySizeArg = ArgWithParam<int>;
 
 class GIOBase {
 public:
@@ -871,7 +871,7 @@ public:
 protected:
     friend class GeneratorBase;
 
-    std::vector<Internal::Parameter> parameters_;
+    std::vector<Parameter> parameters_;
 
     void init_internals();
     void set_inputs(const std::vector<FuncOrExpr> &inputs);
@@ -958,11 +958,11 @@ private:
 
 public:
     GeneratorInput_Func(const std::string &name, const TypeArg &t, const DimensionArg &d)
-        : Super(name, Internal::IOKind::Function, t, d) {
+        : Super(name, IOKind::Function, t, d) {
     }
 
     GeneratorInput_Func(const ArraySizeArg &array_size, const std::string &name, const TypeArg &t, const DimensionArg &d)
-        : Super(array_size, name, Internal::IOKind::Function, t, d) {
+        : Super(array_size, name, IOKind::Function, t, d) {
     }
 
     template <typename... Args>
@@ -990,7 +990,7 @@ private:
 
 protected:
     void set_def_min_max() override {
-        for (Internal::Parameter &p : this->parameters_) {
+        for (Parameter &p : this->parameters_) {
             p.set_scalar<TBase>(def_);
         }
     }
@@ -998,13 +998,13 @@ protected:
 public:
     GeneratorInput_Scalar(const std::string &name, 
                           const TBase &def)
-        : Super(name, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
+        : Super(name, IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
     }
 
     GeneratorInput_Scalar(const ArraySizeArg &array_size, 
                           const std::string &name, 
                           const TBase &def)
-        : Super(array_size, name, Internal::IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
+        : Super(array_size, name, IOKind::Scalar, type_of<TBase>(), 0), def_(def) {
     }
 
     /** You can use this Input as an expression in a halide
@@ -1035,7 +1035,7 @@ protected:
         GeneratorInput_Scalar<T>::set_def_min_max();
         // Don't set min/max for bool
         if (!std::is_same<TBase, bool>::value) {
-            for (Internal::Parameter &p : this->parameters_) {
+            for (Parameter &p : this->parameters_) {
                 if (min_.defined()) p.set_min_value(min_);
                 if (max_.defined()) p.set_max_value(max_);
             }
@@ -1072,10 +1072,10 @@ public:
 
 template<typename T, typename TBase = typename std::remove_all_extents<T>::type> 
 using GeneratorInputImplBase =
-    typename Internal::select_type<
-        Internal::cond<std::is_same<TBase, Func>::value, Internal::GeneratorInput_Func<T>>,
-        Internal::cond<std::is_arithmetic<TBase>::value, Internal::GeneratorInput_Arithmetic<T>>,
-        Internal::cond<std::is_scalar<TBase>::value,     Internal::GeneratorInput_Scalar<T>>
+    typename select_type<
+        cond<std::is_same<TBase, Func>::value, GeneratorInput_Func<T>>,
+        cond<std::is_arithmetic<TBase>::value, GeneratorInput_Arithmetic<T>>,
+        cond<std::is_scalar<TBase>::value,     GeneratorInput_Scalar<T>>
     >::type;
 
 }  // namespace Internal
