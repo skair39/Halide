@@ -6,7 +6,6 @@ enum class BagType { Paper, Plastic };
 
 class StubTest : public Halide::Generator<StubTest> {
 public:
-    GeneratorParam<int> array_count{ "array_count", 2 };
     GeneratorParam<float> float_param{ "float_param", 3.1415926535f };
     GeneratorParam<BagType> bag_type{ "bag_type",
                                       BagType::Paper,
@@ -16,16 +15,14 @@ public:
     ScheduleParam<bool> vectorize{ "vectorize", true };
     ScheduleParam<LoopLevel> intermediate_level{ "intermediate_level", "undefined" };
 
-    Input<Func[]> input{ array_count, "input", 3 };  // require a 3-dimensional Func but leave Type unspecified
+    Input<Func[]> input{ "input", 3 };  // require a 3-dimensional Func but leave Type and ArraySize unspecified
     Input<float> float_arg{ "float_arg", 1.0f, 0.0f, 100.0f }; 
-    Input<int32_t[]> int_arg{ array_count, "int_arg", 1 };
+    Input<int32_t[]> int_arg{ "int_arg", 1 };  // leave ArraySize unspecified
 
     Output<Func> f{"f", 3};  // require a 3-dimensional Func but leave Type(s) unspecified
-    Output<Func[]> g{ array_count, "g", Int(16), 2};
+    Output<Func[]> g{ "g", Int(16), 2};   // leave ArraySize unspecified
 
     void generate() {
-        assert(array_count >= 1);
-
         // Gratuitous intermediate for the purpose of exercising
         // ScheduleParam<LoopLevel>
         intermediate(x, y, c) = input[0](x, y, c) * float_arg;
@@ -34,6 +31,7 @@ public:
                 intermediate(x, y, c),
                 intermediate(x, y, c) + int_arg[0]);
 
+        g.resize(input.size());
         for (size_t i = 0; i < input.size(); ++i) {
             g[i](x, y) = cast<int16_t>(input[i](x, y, 0) + int_arg[i]);
         }

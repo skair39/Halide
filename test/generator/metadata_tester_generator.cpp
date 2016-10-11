@@ -7,11 +7,7 @@ enum class SomeEnum { Foo,
 
 class MetadataTester : public Halide::Generator<MetadataTester> {
 public:
-    // Default values for all of these are deliberately wrong:
-    GeneratorParam<int> array_count{ "array_count", 32 };        // must be overridden to 2
-
     Input<Func> input{ "input", Int(16), 2 };  // must be overridden to {UInt(8), 3}
-    // Input<Func> input_tuple{ "input_tuple", {Int(8), Int(16)}, 2 };
     Input<bool> b{ "b", true };
     Input<int8_t> i8{ "i8", 8, -8, 127 }; 
     Input<int16_t> i16{ "i16", 16, -16, 127 };
@@ -29,29 +25,21 @@ public:
     Input<Func> input_nod{ "input_nod", UInt(8) }; // must specify type=uint8 dim=3
     Input<Func> input_not{ "input_not", 3 };       // must specify type=uint8
 
-    Input<Func[]> array_input{ array_count, "array_input", UInt(8), 3 };
+    Input<Func[]> array_input{ "array_input", UInt(8), 3 };  // must specify size=2
     Input<Func[2]> array2_input{ "array2_input", UInt(8), 3 };
-    Input<int8_t[]> array_i8{ array_count, "array_i8" };
+    Input<int8_t[]> array_i8{ "array_i8" };  // must specify size=2
     Input<int8_t[2]> array2_i8{ "array2_i8" };
-    Input<int16_t[]> array_i16{ array_count, "array_i16", 16 };
+    Input<int16_t[]> array_i16{ "array_i16", 16 };  // must specify size=2
     Input<int16_t[2]> array2_i16{ "array2_i16", 16 };
-    Input<int32_t[]> array_i32{ array_count, "array_i32", 32, -32, 127 };
+    Input<int32_t[]> array_i32{ "array_i32", 32, -32, 127 };  // must specify size=2
     Input<int32_t[2]> array2_i32{ "array2_i32", 32, -32, 127 };
-    Input<void *[]> array_h{ array_count, "array_h", nullptr };
-    // array count of 0 means there are no inputs: for AOT, doesn't affect C call signature
-    // (Note that we can't use Func[0] for this, as some compilers don't properly distinguish
-    // between T[] and T[0].)
-    Input<Func[]> empty_inputs{ 0, "empty_inputs", Float(32), 3 };
+    Input<void *[]> array_h{ "array_h", nullptr };  // must specify size=2
 
     Output<Func> output{ "output", {Int(16), UInt(8)}, 2 };  // must be overridden to {{Float(32), Float(32)}, 3}
     Output<float> output_scalar{ "output_scalar" };
-    Output<Func[]> array_outputs{ array_count, "array_outputs", Float(32), 3 };
+    Output<Func[]> array_outputs{ "array_outputs", Float(32), 3 };  // must specify size=2
     Output<Func[2]> array_outputs2{ "array_outputs2", Float(32), 3 };
     Output<float[2]> array_outputs3{ "array_outputs3" };
-    // array count of 0 means there are no outputs: for AOT, doesn't affect C call signature.
-    // (Note that we can't use Func[0] for this, as some compilers don't properly distinguish
-    // between T[] and T[0].)
-    Output<Func[]> empty_outputs{ 0, "empty_outputs", Float(32), 3 };
 
     void generate() {
         Var x, y, c;

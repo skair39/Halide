@@ -22,14 +22,7 @@ public:
         inputs.float_arg = 1.234f;
         inputs.int_arg = { int_arg };
 
-        // Since we need to propagate types passed to us via our own GeneratorParams,
-        // we can't (easily) use the templated constructor; instead, pass on the 
-        // values via the Stub's GeneratorParams struct.
-        StubTest::GeneratorParams gp;
-        // Override array_count to only expect 1 input and provide one output for g
-        gp.array_count = 1;
-
-        stub = StubTest(context(), inputs, gp);
+        stub = StubTest(context(), inputs);
 
         const float kOffset = 2.f;
         output(x, y, c) = cast<uint8_t>(stub.f(x, y, c)[1] + kOffset);

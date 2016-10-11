@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
 
     // We statically know the types we want, so the templated construction method
     // is most convenient.
-    auto gen = StubTest::make<kArrayCount>(
+    auto gen = StubTest::make<>(
         context, 
         // Use aggregate-initialization syntax to fill in an Inputs struct.
         {

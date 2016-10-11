@@ -761,59 +761,27 @@ std::vector<FuncOrExpr> to_func_or_expr_vector(const std::vector<T> &v) {
 void verify_same_funcs(Func a, Func b);
 void verify_same_funcs(const std::vector<Func>& a, const std::vector<Func>& b);
 
-template<typename T>
-class ArgWithParam {
-    T value_;
-    const GeneratorParam<T> * const param_;
-
-public:
-    // *not* explicit ctors
-    ArgWithParam(const T &value) : value_(value), param_(nullptr) {}
-    ArgWithParam(const GeneratorParam<T> &param) : value_(param), param_(&param) {}
-
-    T value() const { return param_ ? *param_ : value_; }
-};
-
-using ArraySizeArg = ArgWithParam<int>;
-
 class GIOBase {
 public:
-    size_t array_size() const { return (size_t) array_size_.value(); }
-    virtual bool is_array() const { internal_error << "Unimplemented"; return false; }
+    bool array_size_defined() const;
+    size_t array_size() const;
+    virtual bool is_array() const;
 
-    const std::string &name() const { return name_; }
-    IOKind kind() const { return kind_; }
-    bool types_defined() const {
-        return !types_.empty();  
-    }
-    const std::vector<Type> &types() const { 
-        internal_assert(types_defined()) << "Type is unspecified for " << name() << "\n";
-        return types_; 
-    }
-    Type type() const { 
-        internal_assert(types_.size() == 1) << "Expected types_.size() == 1, saw " << types_.size() << " for " << name() << "\n";
-        return types_.at(0); 
-    }
-    bool dimensions_defined() const {
-        return dimensions_ != -1;  
-    }
-    int dimensions() const { 
-        internal_assert(dimensions_defined()) << "Dimensions unspecified for " << name() << "\n";
-        return dimensions_; 
-    }
+    const std::string &name() const;
+    IOKind kind() const;
 
-    const std::vector<Func> &funcs() const {
-        internal_assert(funcs_.size() == array_size() && exprs_.empty());
-        return funcs_;
-    }
+    bool types_defined() const;
+    const std::vector<Type> &types() const;
+    Type type() const;
 
-    const std::vector<Expr> &exprs() const {
-        internal_assert(exprs_.size() == array_size() && funcs_.empty());
-        return exprs_;
-    }
+    bool dimensions_defined() const;
+    int dimensions() const;
+
+    const std::vector<Func> &funcs() const;
+    const std::vector<Expr> &exprs() const;
 
 protected:
-    GIOBase(const ArraySizeArg &array_size, 
+    GIOBase(size_t array_size, 
             const std::string &name, 
             IOKind kind,
             const std::vector<Type> &types,
@@ -822,7 +790,7 @@ protected:
 
     friend class GeneratorBase;
 
-    ArraySizeArg array_size_;  // always 1 if is_array() == false
+    int array_size_;           // always 1 if is_array() == false. -1 if is_array() == true but unspecified.
 
     const std::string name_;
     const IOKind kind_;
@@ -837,6 +805,7 @@ protected:
 
     virtual void verify_internals() const;
 
+    void check_matching_array_size(size_t size);
     void check_matching_type_and_dim(const std::vector<Type> &t, int d);
 
     template<typename ElemType>
@@ -859,14 +828,14 @@ inline const std::vector<Func> &GIOBase::get_values<Func>() const {
 
 class GeneratorInputBase : public GIOBase {
 protected:
-    GeneratorInputBase(const ArraySizeArg &array_size,
+    GeneratorInputBase(size_t array_size,
                        const std::string &name, 
                        IOKind kind, 
                        const std::vector<Type> &t, 
                        int d);
 
     GeneratorInputBase(const std::string &name, IOKind kind, const std::vector<Type> &t, int d)
-      : GeneratorInputBase(ArraySizeArg(1), name, kind, t, d) {}
+      : GeneratorInputBase(1, name, kind, t, d) {}
 
     ~GeneratorInputBase() override;
 
@@ -910,15 +879,15 @@ protected:
         std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0)
     >::type * = nullptr>
     GeneratorInputImpl(const std::string &name, IOKind kind, const std::vector<Type> &t, int d)
-        : GeneratorInputBase(ArraySizeArg(std::extent<T2, 0>::value), name, kind, t, d) {
+        : GeneratorInputBase(std::extent<T2, 0>::value, name, kind, t, d) {
     }
 
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0
     >::type * = nullptr>
-    GeneratorInputImpl(const ArraySizeArg &array_size, const std::string &name, IOKind kind, const std::vector<Type> &t, int d)
-        : GeneratorInputBase(array_size, name, kind, t, d) {
+    GeneratorInputImpl(const std::string &name, IOKind kind, const std::vector<Type> &t, int d)
+        : GeneratorInputBase(-1, name, kind, t, d) {
     }
 
 public:
@@ -976,22 +945,22 @@ public:
         : Super(name, IOKind::Function, {}, -1) {
     }
 
-    GeneratorInput_Func(const ArraySizeArg &array_size, const std::string &name, const Type &t, int d)
+    GeneratorInput_Func(size_t array_size, const std::string &name, const Type &t, int d)
         : Super(array_size, name, IOKind::Function, {t}, d) {
     }
 
     // unspecified type
-    GeneratorInput_Func(const ArraySizeArg &array_size, const std::string &name, int d)
+    GeneratorInput_Func(size_t array_size, const std::string &name, int d)
         : Super(array_size, name, IOKind::Function, {}, d) {
     }
 
     // unspecified dimension
-    GeneratorInput_Func(const ArraySizeArg &array_size, const std::string &name, const Type &t)
+    GeneratorInput_Func(size_t array_size, const std::string &name, const Type &t)
         : Super(array_size, name, IOKind::Function, {t}, -1) {
     }
 
     // unspecified type & dimension
-    GeneratorInput_Func(const ArraySizeArg &array_size, const std::string &name)
+    GeneratorInput_Func(size_t array_size, const std::string &name)
         : Super(array_size, name, IOKind::Function, {}, -1) {
     }
 
@@ -1032,7 +1001,7 @@ public:
         : Super(name, IOKind::Scalar, {type_of<TBase>()}, 0), def_(def) {
     }
 
-    GeneratorInput_Scalar(const ArraySizeArg &array_size, 
+    GeneratorInput_Scalar(size_t array_size, 
                           const std::string &name, 
                           const TBase &def = static_cast<TBase>(0))
         : Super(array_size, name, IOKind::Scalar, {type_of<TBase>()}, 0), def_(def) {
@@ -1080,7 +1049,7 @@ public:
         : Super(name, def), min_(Expr()), max_(Expr()) {
     }
 
-    GeneratorInput_Arithmetic(const ArraySizeArg &array_size, 
+    GeneratorInput_Arithmetic(size_t array_size, 
                               const std::string &name, 
                               const TBase &def = static_cast<TBase>(0))
         : Super(array_size, name, def), min_(Expr()), max_(Expr()) {
@@ -1093,7 +1062,7 @@ public:
         : Super(name, def), min_(min), max_(max) {
     }
 
-    GeneratorInput_Arithmetic(const ArraySizeArg &array_size, 
+    GeneratorInput_Arithmetic(size_t array_size, 
                               const std::string &name, 
                               const TBase &def, 
                               const TBase &min, 
@@ -1138,7 +1107,7 @@ public:
         : Super(name, def) {
     }
 
-    GeneratorInput(const Internal::ArraySizeArg &array_size, const std::string &name, const TBase &def)
+    GeneratorInput(size_t array_size, const std::string &name, const TBase &def)
         : Super(array_size, name, def) {
     }
 
@@ -1147,7 +1116,7 @@ public:
         : Super(name, def, min, max) {
     }
 
-    GeneratorInput(const Internal::ArraySizeArg &array_size, const std::string &name, 
+    GeneratorInput(size_t array_size, const std::string &name, 
                    const TBase &def, const TBase &min, const TBase &max)
         : Super(array_size, name, def, min, max) {
     }
@@ -1166,21 +1135,21 @@ public:
         : Super(name, d) {
     }
 
-    GeneratorInput(const Internal::ArraySizeArg &array_size, const std::string &name, const Type &t, int d)
+    GeneratorInput(size_t array_size, const std::string &name, const Type &t, int d)
         : Super(array_size, name, t, d) {
     }
 
-    GeneratorInput(const Internal::ArraySizeArg &array_size, const std::string &name, const Type &t)
+    GeneratorInput(size_t array_size, const std::string &name, const Type &t)
         : Super(array_size, name, t) {
     }
 
     // Avoid ambiguity between Func-with-dim and int-with-default
     //template <typename T2 = T, typename std::enable_if<std::is_same<TBase, Func>::value>::type * = nullptr>
-    GeneratorInput(const Internal::ArraySizeArg &array_size, const std::string &name, IntIfFunc d)
+    GeneratorInput(size_t array_size, const std::string &name, IntIfFunc d)
         : Super(array_size, name, d) {
     }
 
-    GeneratorInput(const Internal::ArraySizeArg &array_size, const std::string &name)
+    GeneratorInput(size_t array_size, const std::string &name)
         : Super(array_size, name) {
     }
 };
@@ -1189,7 +1158,7 @@ namespace Internal {
 
 class GeneratorOutputBase : public GIOBase {
 protected:
-    GeneratorOutputBase(const ArraySizeArg &array_size, 
+    GeneratorOutputBase(size_t array_size, 
                         const std::string &name, 
                         const std::vector<Type> &t, 
                         int d);
@@ -1197,13 +1166,14 @@ protected:
     GeneratorOutputBase(const std::string &name, 
                         const std::vector<Type> &t, 
                         int d)
-      : GeneratorOutputBase(ArraySizeArg(1), name, t, d) {}
+      : GeneratorOutputBase(1, name, t, d) {}
 
     ~GeneratorOutputBase() override;
 
     friend class GeneratorBase;
 
     void init_internals();
+    void resize(size_t size);
 };
 
 template<typename T>
@@ -1229,15 +1199,15 @@ protected:
         std::is_array<T2>::value && std::rank<T2>::value == 1 && (std::extent<T2, 0>::value > 0)
     >::type * = nullptr>
     GeneratorOutputImpl(const std::string &name, const std::vector<Type> &t, int d)
-        : GeneratorOutputBase(ArraySizeArg(std::extent<T2, 0>::value), name, t, d) {
+        : GeneratorOutputBase(std::extent<T2, 0>::value, name, t, d) {
     }
 
     template <typename T2 = T, typename std::enable_if<
         // Only allow T2[]
         std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0
     >::type * = nullptr>
-    GeneratorOutputImpl(const ArraySizeArg &array_size, const std::string &name, const std::vector<Type> &t, int d)
-        : GeneratorOutputBase(array_size, name, t, d) {
+    GeneratorOutputImpl(const std::string &name, const std::vector<Type> &t, int d)
+        : GeneratorOutputBase(-1, name, t, d) {
     }
 
 public:
@@ -1280,6 +1250,14 @@ public:
     typename std::vector<ValueType>::const_iterator end() const {
         return get_values<ValueType>().end();
     }
+
+    template <typename T2 = T, typename std::enable_if<
+        // Only allow T2[]
+        std::is_array<T2>::value && std::rank<T2>::value == 1 && std::extent<T2, 0>::value == 0
+    >::type * = nullptr>
+    void resize(size_t size) {
+        GeneratorOutputBase::resize(size);
+    }
 };
 
 template<typename T>
@@ -1295,7 +1273,7 @@ protected:
         : Super(name, t, d) {
     }
 
-    GeneratorOutput_Func(const ArraySizeArg &array_size, const std::string &name, const std::vector<Type> &t, int d)
+    GeneratorOutput_Func(size_t array_size, const std::string &name, const std::vector<Type> &t, int d)
         : Super(array_size, name, t, d) {
     }
 };
@@ -1313,7 +1291,7 @@ protected:
         : Super(name, {type_of<TBase>()}, 0) {
     }
 
-    GeneratorOutput_Arithmetic(const ArraySizeArg &array_size, const std::string &name) 
+    GeneratorOutput_Arithmetic(size_t array_size, const std::string &name) 
         : Super(array_size, name, {type_of<TBase>()}, 0) {
     }
 };
@@ -1343,7 +1321,7 @@ public:
         : GeneratorOutput(std::string(name)) {
     }
 
-    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name) 
+    GeneratorOutput(size_t array_size, const std::string &name) 
         : Super(array_size, name) {
     }
 
@@ -1359,15 +1337,15 @@ public:
         : Super(name, t, d) {
     }
 
-    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name, int d)
+    GeneratorOutput(size_t array_size, const std::string &name, int d)
         : Super(array_size, name, {}, d) {
     }
 
-    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name, const Type &t, int d)
+    GeneratorOutput(size_t array_size, const std::string &name, const Type &t, int d)
         : Super(array_size, name, {t}, d) {
     }
 
-    GeneratorOutput(const Internal::ArraySizeArg &array_size, const std::string &name, const std::vector<Type> &t, int d)
+    GeneratorOutput(size_t array_size, const std::string &name, const std::vector<Type> &t, int d)
         : Super(array_size, name, t, d) {
     }
 };
