@@ -2,8 +2,8 @@
 //  HalideViewController.h
 //
 
-#ifndef HelloiOSBazel_HalideViewController_h
-#define HelloiOSBazel_HalideViewController_h
+#ifndef HelloiOS_HalideViewController_h
+#define HelloiOS_HalideViewController_h
 
 #import "HalideView.h"
 #import <UIKit/UIKit.h>

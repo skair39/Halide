@@ -5,22 +5,25 @@ namespace {
 // TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Init : public Halide::Generator<ReactionDiffusion2Init> {
 public:
-    Param<float> cx{"cx"};
-    Param<float> cy{"cy"};
+    Input<float> cx{"cx"};
+    Input<float> cy{"cy"};
+    Output<Buffer<float>> output{"output", 3};
 
-    Func build() {
-        Func initial;
-        initial(x, y, c) = Halide::random_float();
+    void generate() {
+        output(x, y, c) = Halide::random_float();
+    }
 
-        // schedule 
+    void schedule() {
         if (get_target().has_gpu_feature()) {
-            initial.reorder(c, x, y).bound(c, 0, 3).vectorize(c).gpu_tile(x, y, 4, 4);
-            initial.output_buffer()
+            Func(output)
+                .reorder(c, x, y)
+                .bound(c, 0, 3)
+                .vectorize(c)
+                .gpu_tile(x, y, 4, 4);
+            output
                 .dim(0).set_stride(3)
                 .dim(2).set_bounds(0, 3).set_stride(1);
         }
-        
-        return initial;
     }
 
 private:
@@ -32,15 +35,16 @@ HALIDE_REGISTER_GENERATOR(ReactionDiffusion2Init, "reaction_diffusion_2_init")
 // TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Update : public Halide::Generator<ReactionDiffusion2Update> {
 public:
-    ImageParam state{Float(32), 3, "state"};
-    Param<int> mouse_x{"mouse_x"};
-    Param<int> mouse_y{"mouse_y"};
-    Param<float> cx{"cx"};
-    Param<float> cy{"cy"};
-    Param<int> frame{"frame"};
+    Input<Buffer<float>> state{"state", 3};
+    Input<int> mouse_x{"mouse_x"};
+    Input<int> mouse_y{"mouse_y"};
+    Input<float> cx{"cx"};
+    Input<float> cy{"cy"};
+    Input<int> frame{"frame"};
+    Output<Buffer<float>> new_state{"new_state", 3};
 
-    Func build() {
-        Func clamped = Halide::BoundaryConditions::repeat_edge(state);
+    void generate() {
+        clamped = Halide::BoundaryConditions::repeat_edge(state);
 
         blur_x(x, y, c) = (clamped(x-3, y, c) +
                            clamped(x-1, y, c) +
@@ -84,70 +88,86 @@ public:
         G = clamp(G, 0.0f, 1.0f);
         B = clamp(B, 0.0f, 1.0f);
 
-        Func new_state{"new_state"};
         new_state(x, y, c) = select(c == 0, R, select(c == 1, G, B));
 
         // Noise at the edges
-        new_state(x, state.top(), c) = random_float(frame)*0.2f;
-        new_state(x, state.bottom(), c) = random_float(frame)*0.2f;
-        new_state(state.left(), y, c) = random_float(frame)*0.2f;
-        new_state(state.right(), y, c) = random_float(frame)*0.2f;
+        new_state(x, state.dim(1).min(), c) = random_float(frame)*0.2f;
+        new_state(x, state.dim(1).max(), c) = random_float(frame)*0.2f;
+        new_state(state.dim(0).min(), y, c) = random_float(frame)*0.2f;
+        new_state(state.dim(0).max(), y, c) = random_float(frame)*0.2f;
 
         // Add some white where the mouse is
-        Expr min_x = clamp(mouse_x - 20, 0, state.width()-1);
-        Expr max_x = clamp(mouse_x + 20, 0, state.width()-1);
-        Expr min_y = clamp(mouse_y - 20, 0, state.height()-1);
-        Expr max_y = clamp(mouse_y + 20, 0, state.height()-1);
-        RDom clobber(min_x, max_x - min_x + 1, min_y, max_y - min_y + 1);
+        Expr min_x = clamp(mouse_x - 20, 0, state.dim(0).extent()-1);
+        Expr max_x = clamp(mouse_x + 20, 0, state.dim(0).extent()-1);
+        Expr min_y = clamp(mouse_y - 20, 0, state.dim(1).extent()-1);
+        Expr max_y = clamp(mouse_y + 20, 0, state.dim(1).extent()-1);
+        clobber = RDom(min_x, max_x - min_x + 1, min_y, max_y - min_y + 1);
 
         Expr dx = clobber.x - mouse_x;
         Expr dy = clobber.y - mouse_y;
         Expr radius = dx * dx + dy * dy;
         new_state(clobber.x, clobber.y, c) = select(radius < 400.0f, 1.0f, new_state(clobber.x, clobber.y, c));
+    }
 
-        // schedule
+    void schedule() {
         state.dim(2).set_bounds(0, 3);
-        new_state.reorder(c, x, y).bound(c, 0, 3).unroll(c);
+        Func(new_state)
+            .reorder(c, x, y)
+            .bound(c, 0, 3)
+            .unroll(c);
 
         if (get_target().has_gpu_feature()) {
-            blur.reorder(c, x, y).vectorize(c);
-            blur.compute_at(new_state, Var::gpu_threads());
-            new_state.gpu_tile(x, y, 8, 2);
-            new_state.update(0).reorder(c, x).unroll(c);
-            new_state.update(1).reorder(c, x).unroll(c);
-            new_state.update(2).reorder(c, y).unroll(c);
-            new_state.update(3).reorder(c, y).unroll(c);
-            new_state.update(4).reorder(c, clobber.x).unroll(c);
+            blur
+                .reorder(c, x, y)
+                .vectorize(c)
+                .compute_at(new_state, Var::gpu_threads());
 
-            new_state.update(0).gpu_tile(x, 8);
-            new_state.update(1).gpu_tile(x, 8);
-            new_state.update(2).gpu_tile(y, 8);
-            new_state.update(3).gpu_tile(y, 8);
-            new_state.update(4).gpu_tile(clobber.x, clobber.y, 1, 1);
+            Func(new_state).gpu_tile(x, y, 8, 2);
+
+            for (int i = 0; i <= 1; ++i) {
+                Func(new_state).update(i)
+                    .reorder(c, x)
+                    .unroll(c)
+                    .gpu_tile(x, 8);
+            }
+            for (int i = 2; i <= 3; ++i) {
+                Func(new_state).update(i)
+                    .reorder(c, y)
+                    .unroll(c)
+                    .gpu_tile(y, 8);
+            }
+            Func(new_state).update(4)
+                .reorder(c, clobber.x)
+                .unroll(c)
+                .gpu_tile(clobber.x, clobber.y, 1, 1);
 
             state
                 .dim(0).set_stride(3)
                 .dim(2).set_stride(1).set_extent(3);
-            new_state.output_buffer()
+            new_state
                 .dim(0).set_stride(3)
                 .dim(2).set_stride(1).set_extent(3);
         } else {
             Var yi;
-            new_state.split(y, y, yi, 64).parallel(y);
+            Func(new_state)
+                .split(y, y, yi, 64)
+                .parallel(y)
+                .vectorize(x, 4);
 
-            blur.compute_at(new_state, yi);
-            clamped.store_at(new_state, y).compute_at(new_state, yi);
+            blur
+                .compute_at(new_state, yi)
+                .vectorize(x, 4);
 
-            new_state.vectorize(x, 4);
-            blur.vectorize(x, 4);
+            clamped
+                .store_at(new_state, y)
+                .compute_at(new_state, yi);
         }
-
-        return new_state;
     }
 
 private:
-    Func blur_x, blur_y, blur;
+    Func blur_x, blur_y, blur, clamped;
     Var x, y, c;
+    RDom clobber;
 };
 
 HALIDE_REGISTER_GENERATOR(ReactionDiffusion2Update, "reaction_diffusion_2_update")
@@ -155,11 +175,10 @@ HALIDE_REGISTER_GENERATOR(ReactionDiffusion2Update, "reaction_diffusion_2_update
 // TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Render : public Halide::Generator<ReactionDiffusion2Render> {
 public:
-    ImageParam state{Float(32), 3, "state"};
+    Input<Buffer<float>> state{"state", 3};
+    Output<Buffer<int32_t>> render{"render", 2};
 
-    Func build() {
-        Func render;
-
+    void generate() {
         Func contour;
         contour(x, y, c) = pow(state(x, y, c) * (1 - state(x, y, c)) * 4, 8);
 
@@ -180,20 +199,22 @@ public:
         Expr blue = cast<int32_t>(B * 255) * kBFactor;
 
         render(x, y) = cast<int32_t>(alpha + red + green + blue);
+    }
 
-        // schedule
+    void schedule() {
         if (get_target().has_gpu_feature()) {
             state
                 .dim(0).set_stride(3)
                 .dim(2).set_stride(1).set_bounds(0, 3);
-            render.gpu_tile(x, y, 32, 4);
+            Func(render)
+                .gpu_tile(x, y, 32, 4);
         } else {
-            render.vectorize(x, 4);
             Var yi;
-            render.split(y, y, yi, 64).parallel(y);
+            Func(render)
+                .vectorize(x, 4)
+                .split(y, y, yi, 64)
+                .parallel(y);
         }
-
-        return render;
     }
 
 private:
