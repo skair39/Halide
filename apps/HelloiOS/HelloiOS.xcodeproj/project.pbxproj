@@ -8,9 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		1440FDD11DDF9E2600B55760 /* HalideViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1440FDD01DDF9E2600B55760 /* HalideViewController.m */; };
-		296DAF091B39E74F00555E8A /* reaction_diffusion_2_init.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 296DAF061B39E74F00555E8A /* reaction_diffusion_2_init.o */; };
-		296DAF0A1B39E74F00555E8A /* reaction_diffusion_2_render.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 296DAF071B39E74F00555E8A /* reaction_diffusion_2_render.o */; };
-		296DAF0B1B39E74F00555E8A /* reaction_diffusion_2_update.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 296DAF081B39E74F00555E8A /* reaction_diffusion_2_update.o */; };
+		14F463431E1F0BC2002C2EA2 /* reaction_diffusion_2_init.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 14F463421E1F0BC2002C2EA2 /* reaction_diffusion_2_init.a */; };
+		14F463461E1F14C5002C2EA2 /* reaction_diffusion_2_render.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 14F463441E1F14C5002C2EA2 /* reaction_diffusion_2_render.a */; };
+		14F463471E1F14C5002C2EA2 /* reaction_diffusion_2_update.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 14F463451E1F14C5002C2EA2 /* reaction_diffusion_2_update.a */; };
+		14F463511E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 14F463491E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.a */; };
+		14F463521E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 14F4634B1E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.a */; };
+		14F463531E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 14F4634D1E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.a */; };
 		29A23DAC1B33E68C00A92A6F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 29A23DAB1B33E68C00A92A6F /* Metal.framework */; };
 		3D6C4DBB198051DB002AD41E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D6C4DBA198051DB002AD41E /* Foundation.framework */; };
 		3D6C4DBD198051DB002AD41E /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D6C4DBC198051DB002AD41E /* CoreGraphics.framework */; };
@@ -26,9 +29,18 @@
 /* Begin PBXFileReference section */
 		1440FDCF1DDF9E2600B55760 /* HalideViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HalideViewController.h; sourceTree = "<group>"; };
 		1440FDD01DDF9E2600B55760 /* HalideViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HalideViewController.m; sourceTree = "<group>"; };
-		296DAF061B39E74F00555E8A /* reaction_diffusion_2_init.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = reaction_diffusion_2_init.o; path = "../../Intermediates/HelloiOS.build/Debug-iphoneos/HelloiOS.build/DerivedSources/reaction_diffusion_2_init.o"; sourceTree = BUILT_PRODUCTS_DIR; };
-		296DAF071B39E74F00555E8A /* reaction_diffusion_2_render.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = reaction_diffusion_2_render.o; path = "../../Intermediates/HelloiOS.build/Debug-iphoneos/HelloiOS.build/DerivedSources/reaction_diffusion_2_render.o"; sourceTree = BUILT_PRODUCTS_DIR; };
-		296DAF081B39E74F00555E8A /* reaction_diffusion_2_update.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = reaction_diffusion_2_update.o; path = "../../Intermediates/HelloiOS.build/Debug-iphoneos/HelloiOS.build/DerivedSources/reaction_diffusion_2_update.o"; sourceTree = BUILT_PRODUCTS_DIR; };
+		14F463421E1F0BC2002C2EA2 /* reaction_diffusion_2_init.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = reaction_diffusion_2_init.a; sourceTree = "<group>"; };
+		14F463441E1F14C5002C2EA2 /* reaction_diffusion_2_render.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = reaction_diffusion_2_render.a; sourceTree = "<group>"; };
+		14F463451E1F14C5002C2EA2 /* reaction_diffusion_2_update.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = reaction_diffusion_2_update.a; sourceTree = "<group>"; };
+		14F463481E1F1501002C2EA2 /* reaction_diffusion_2_init.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reaction_diffusion_2_init.h; sourceTree = "<group>"; };
+		14F463491E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = reaction_diffusion_2_metal_init.a; sourceTree = "<group>"; };
+		14F4634A1E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reaction_diffusion_2_metal_init.h; sourceTree = "<group>"; };
+		14F4634B1E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = reaction_diffusion_2_metal_render.a; sourceTree = "<group>"; };
+		14F4634C1E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reaction_diffusion_2_metal_render.h; sourceTree = "<group>"; };
+		14F4634D1E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = reaction_diffusion_2_metal_update.a; sourceTree = "<group>"; };
+		14F4634E1E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reaction_diffusion_2_metal_update.h; sourceTree = "<group>"; };
+		14F4634F1E1F1501002C2EA2 /* reaction_diffusion_2_render.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reaction_diffusion_2_render.h; sourceTree = "<group>"; };
+		14F463501E1F1501002C2EA2 /* reaction_diffusion_2_update.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reaction_diffusion_2_update.h; sourceTree = "<group>"; };
 		29A23DAB1B33E68C00A92A6F /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		3D6C4DB7198051DB002AD41E /* HelloiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HelloiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D6C4DBA198051DB002AD41E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -41,10 +53,9 @@
 		3D6C4DC9198051DB002AD41E /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		3D6C4DCA198051DB002AD41E /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		3D6C4DCC198051DB002AD41E /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
-		3D6C4DD3198051DB002AD41E /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		3D6C4DE919805225002AD41E /* HalideView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HalideView.h; sourceTree = "<group>"; };
 		3D6C4DEA19805225002AD41E /* HalideView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = HalideView.m; sourceTree = "<group>"; };
-		3D6C4DEC1980522C002AD41E /* reaction_diffusion_2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = reaction_diffusion_2.cpp; sourceTree = "<group>"; };
+		3D6C4DEC1980522C002AD41E /* reaction_diffusion_2_generator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = reaction_diffusion_2_generator.cpp; sourceTree = "<group>"; };
 		3D6C4DF519805438002AD41E /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -53,20 +64,42 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				296DAF0B1B39E74F00555E8A /* reaction_diffusion_2_update.o in Frameworks */,
 				29A23DAC1B33E68C00A92A6F /* Metal.framework in Frameworks */,
-				296DAF091B39E74F00555E8A /* reaction_diffusion_2_init.o in Frameworks */,
+				14F463431E1F0BC2002C2EA2 /* reaction_diffusion_2_init.a in Frameworks */,
+				14F463471E1F14C5002C2EA2 /* reaction_diffusion_2_update.a in Frameworks */,
 				3D6C4DF619805438002AD41E /* QuartzCore.framework in Frameworks */,
-				296DAF0A1B39E74F00555E8A /* reaction_diffusion_2_render.o in Frameworks */,
+				14F463461E1F14C5002C2EA2 /* reaction_diffusion_2_render.a in Frameworks */,
 				3D6C4DBD198051DB002AD41E /* CoreGraphics.framework in Frameworks */,
 				3D6C4DBF198051DB002AD41E /* UIKit.framework in Frameworks */,
+				14F463511E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.a in Frameworks */,
 				3D6C4DBB198051DB002AD41E /* Foundation.framework in Frameworks */,
+				14F463531E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.a in Frameworks */,
+				14F463521E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		14F4631C1E1EE4EE002C2EA2 /* Derived */ = {
+			isa = PBXGroup;
+			children = (
+				14F463481E1F1501002C2EA2 /* reaction_diffusion_2_init.h */,
+				14F463491E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.a */,
+				14F4634A1E1F1501002C2EA2 /* reaction_diffusion_2_metal_init.h */,
+				14F4634B1E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.a */,
+				14F4634C1E1F1501002C2EA2 /* reaction_diffusion_2_metal_render.h */,
+				14F4634D1E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.a */,
+				14F4634E1E1F1501002C2EA2 /* reaction_diffusion_2_metal_update.h */,
+				14F4634F1E1F1501002C2EA2 /* reaction_diffusion_2_render.h */,
+				14F463501E1F1501002C2EA2 /* reaction_diffusion_2_update.h */,
+				14F463421E1F0BC2002C2EA2 /* reaction_diffusion_2_init.a */,
+				14F463441E1F14C5002C2EA2 /* reaction_diffusion_2_render.a */,
+				14F463451E1F14C5002C2EA2 /* reaction_diffusion_2_update.a */,
+			);
+			name = Derived;
+			sourceTree = DERIVED_FILE_DIR;
+		};
 		3D6C4DAE198051DB002AD41E = {
 			isa = PBXGroup;
 			children = (
@@ -87,15 +120,12 @@
 		3D6C4DB9198051DB002AD41E /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				296DAF061B39E74F00555E8A /* reaction_diffusion_2_init.o */,
-				296DAF071B39E74F00555E8A /* reaction_diffusion_2_render.o */,
-				296DAF081B39E74F00555E8A /* reaction_diffusion_2_update.o */,
+				14F4631C1E1EE4EE002C2EA2 /* Derived */,
 				29A23DAB1B33E68C00A92A6F /* Metal.framework */,
 				3D6C4DF519805438002AD41E /* QuartzCore.framework */,
 				3D6C4DBA198051DB002AD41E /* Foundation.framework */,
 				3D6C4DBC198051DB002AD41E /* CoreGraphics.framework */,
 				3D6C4DBE198051DB002AD41E /* UIKit.framework */,
-				3D6C4DD3198051DB002AD41E /* XCTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -105,7 +135,7 @@
 			children = (
 				3D6C4DC9198051DB002AD41E /* AppDelegate.h */,
 				3D6C4DCA198051DB002AD41E /* AppDelegate.m */,
-				3D6C4DEC1980522C002AD41E /* reaction_diffusion_2.cpp */,
+				3D6C4DEC1980522C002AD41E /* reaction_diffusion_2_generator.cpp */,
 				3D6C4DE919805225002AD41E /* HalideView.h */,
 				3D6C4DEA19805225002AD41E /* HalideView.m */,
 				1440FDCF1DDF9E2600B55760 /* HalideViewController.h */,
@@ -193,22 +223,28 @@
 			files = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/reaction_diffusion_2.cpp",
+				"$(SRCROOT)/reaction_diffusion_2_generator.cpp",
 				"$(SRCROOT)/../../bin/libHalide.a",
 				"$(SRCROOT)/../../include/Halide.h",
 			);
 			outputPaths = (
 				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_generator",
-				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_init.o",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_init.a",
 				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_init.h",
-				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_update.o",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_update.a",
 				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_update.h",
-				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_render.o",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_render.a",
 				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_render.h",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_metal_init.a",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_metal_init.h",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_metal_update.a",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_metal_update.h",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_metal_render.a",
+				"$(DERIVED_FILE_DIR)/reaction_diffusion_2_metal_render.h",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "echo \"${SRCROOT}\"\ncd \"${SRCROOT}/HelloiOS\"\n\n# xcode puts all sorts of junk in the environment which prevents building a binary for osx (instead of ios). sudo'ing to yourself gives a fresh environment.\nsudo -u ${USER} c++ reaction_diffusion_2.cpp -std=c++11 -I ${SRCROOT}/../../include -I ${SRCROOT}/../../build/include -arch x86_64 -L ${SRCROOT}/../../bin -lHalide -o ${DERIVED_FILE_DIR}/reaction_diffusion_2_generator\n\n(cd ${DERIVED_FILE_DIR}; HL_TARGET=arm-64-ios DYLD_LIBRARY_PATH=${SRCROOT}/../../bin:${SRCROOT}/../../build/lib ./reaction_diffusion_2_generator)";
+			shellScript = "echo \"${SRCROOT}\"\ncd \"${SRCROOT}/HelloiOS\"\n\n# xcode puts all sorts of junk in the environment which\n# prevents building a binary for osx (instead of ios).\n# sudo'ing to yourself gives a fresh environment.\nsudo -u ${USER} \\\nc++ reaction_diffusion_2_generator.cpp ${SRCROOT}/../../tools/GenGen.cpp \\\n-std=c++11 \\\n-fno-rtti \\\n-I ${SRCROOT}/../../include \\\n-I ${SRCROOT}/../../build/include \\\n-I ${SRCROOT}/../../tools \\\n-arch x86_64 \\\n-L ${SRCROOT}/../../bin \\\n-lHalide \\\n-o ${DERIVED_FILE_DIR}/reaction_diffusion_2_generator\n\n\nif [ \"${arch}\" == \"x86_64\" ]\nthen\n# assume simulator, which requires osx rather than ios\nTARGET=x86-64-osx\nelse\n# TODO: sniff arm-32 builds here; for now, just assume arm-64 only\nTARGET=arm-64-ios\nfi\n\nfor GEN in init update render; do\n(cd ${DERIVED_FILE_DIR}; \\\nDYLD_LIBRARY_PATH=${SRCROOT}/../../bin:${SRCROOT}/../../build/lib \\\n./reaction_diffusion_2_generator -g reaction_diffusion_2_${GEN} -f reaction_diffusion_2_${GEN} -n reaction_diffusion_2_${GEN} -o ${DERIVED_FILE_DIR} target=${TARGET})\ndone\n\nfor GEN in init update render; do\n(cd ${DERIVED_FILE_DIR}; \\\nDYLD_LIBRARY_PATH=${SRCROOT}/../../bin:${SRCROOT}/../../build/lib \\\n./reaction_diffusion_2_generator -g reaction_diffusion_2_${GEN} -f reaction_diffusion_2_metal_${GEN} -n reaction_diffusion_2_metal_${GEN} -o ${DERIVED_FILE_DIR} target=${TARGET}-metal-user_context)\ndone\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
