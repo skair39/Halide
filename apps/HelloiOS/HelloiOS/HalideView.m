@@ -71,6 +71,51 @@
     frameElapsedEstimate = -1;
 }
 
+- (void)initBufsWithWidth: (int)w height: (int)h
+{
+    NSLog(@"InitBufs: %d %d", w, h);
+
+    // Free old buffers if size changes.
+    halide_device_free((void *)&self, &buf1);
+    halide_device_free((void *)&self, &buf2);
+    halide_device_free((void *)&self, &pixel_buf);
+    free(buf1.host);
+    free(buf2.host);
+    free(pixel_buf.host);
+
+    // Make a pair of buffers to represent the current state
+    memset(&buf1, 0, sizeof(buf1));
+    buf1.extent[0] = (int32_t)w;
+    buf1.extent[1] = (int32_t)h;
+    buf1.extent[2] = 3;
+    if (self.use_metal) {
+        buf1.stride[0] = 3;
+        buf1.stride[1] = buf1.extent[0] * buf1.stride[0];
+        buf1.stride[2] = 1;
+        buf1.elem_size = sizeof(float);
+    } else {
+        buf1.stride[0] = 1;
+        buf1.stride[1] = w;
+        buf1.stride[2] = w * h;
+    }
+    buf1.elem_size = 4;
+    
+    buf2 = buf1;
+    buf1.host = (uint8_t *)malloc(4 * 3 * w * h);
+    buf2.host = (uint8_t *)malloc(4 * 3 * w * h);
+
+    pixel_buf = buf1;
+    pixel_buf.extent[2] = 0;
+    pixel_buf.stride[2] = 0;
+    if (self.use_metal) {
+        // Destination buf must have rows a multiple of 64 bytes for Metal's copyFromBuffer method.
+        pixel_buf.stride[0] = 1;
+        pixel_buf.stride[1] = (pixel_buf.extent[1] + 63) & ~63;
+        pixel_buf.host = (uint8_t *)malloc(4 * w * h);
+    }
+    pixel_buf.host = (uint8_t *)malloc(4 * pixel_buf.stride[1] * pixel_buf.extent[1]);
+}
+
 - (void)didMoveToWindow
 {
     self.contentScaleFactor = self.window.screen.nativeScale;
@@ -103,13 +148,19 @@
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
-    self.touch_position = [touches.anyObject locationInView:self];
-    self.touch_active = true;
+    UITouch* touch = [touches anyObject];
+    self.touch_position = [touch locationInView:self];
+    self.touch_active = [self pointInside:self.touch_position withEvent:event];
+    NSUInteger numTaps = [touch tapCount];
+    if (numTaps > 1) {
+        self.use_metal = !self.use_metal;
+    }
+    NSLog(@"TBTaps: %d, self.use_metal %d", (int)numTaps, (int)self.use_metal);
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
     self.touch_position = [touches.anyObject locationInView:self];
-    self.touch_active = true;
+    self.touch_active = [self pointInside:self.touch_position withEvent:event];
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
@@ -122,7 +173,7 @@
 
 #if HAS_METAL_SDK
 - (void)initiateRenderMetal {
-    NSLog(@"initiateRenderMetal");
+    //NSLog(@"initiateRenderMetal");
     // Create autorelease pool per frame to avoid possible deadlock situations
     // because there are 3 CAMetalDrawables sitting in an autorelease pool.
     @autoreleasepool
@@ -136,7 +187,8 @@
 
         // handle display changes here
         if (texture.width != buf1.extent[0] ||
-            texture.height != buf1.extent[1]) {
+            texture.height != buf1.extent[1] ||
+            buf1.stride[0] != 3) {
  
             // set the metal layer to the drawable size in case orientation or size changes
             CGSize drawableSize = self.bounds.size;
@@ -146,42 +198,14 @@
 
             _metalLayer.drawableSize = drawableSize;
             
-            // Free old buffers if size changes.
-            halide_device_free((void *)&self, &buf1);
-            halide_device_free((void *)&self, &buf2);
-            halide_device_free((void *)&self, &pixel_buf);
-            free(buf1.host);
-            free(buf2.host);
-            free(pixel_buf.host);
+            [self initBufsWithWidth:drawableSize.width height:drawableSize.height];
 
             cx = drawableSize.width / 2;
             cy = drawableSize.height / 2;
             
-            // Make a pair of buffers to represent the current state
-            memset(&buf1, 0, sizeof(buf1));
-            buf1.extent[0] = (int32_t)drawableSize.width;
-            buf1.extent[1] = (int32_t)drawableSize.height;
-            buf1.extent[2] = 3;
-            buf1.stride[0] = 3;
-            buf1.stride[1] = buf1.extent[0] * buf1.stride[0];
-            buf1.stride[2] = 1;
-            buf1.elem_size = sizeof(float);
-            
-            buf2 = buf1;
-            buf1.host = (uint8_t *)malloc(4 * 3 * buf1.extent[0] * buf1.extent[1]);
-            buf2.host = (uint8_t *)malloc(4 * 3 * buf2.extent[0] * buf2.extent[1]);
-            // Destination buf must have rows a multiple of 64 bytes for Metal's copyFromBuffer method.
-            memset(&pixel_buf, 0, sizeof(pixel_buf));
-            pixel_buf.extent[0] = buf1.extent[0];
-            pixel_buf.extent[1] = buf1.extent[1];
-            pixel_buf.stride[0] = 1;
-            pixel_buf.stride[1] = (pixel_buf.extent[1] + 63) & ~63;
-            pixel_buf.elem_size = sizeof(uint32_t);
-            pixel_buf.host = (uint8_t *)malloc(4 * pixel_buf.stride[1] * pixel_buf.extent[1]);
-
-            NSLog(@"Calling reaction_diffusion_2_metal_init size (%u x %u)", buf1.extent[0], buf1.extent[1]);
+            //NSLog(@"Calling reaction_diffusion_2_metal_init size (%u x %u)", buf1.extent[0], buf1.extent[1]);
             reaction_diffusion_2_metal_init((__bridge void *)self, cx, cy, &buf1);
-            NSLog(@"Returned from reaction_diffusion_2_metal_init");
+            //NSLog(@"Returned from reaction_diffusion_2_metal_init");
             
             iteration = 0;
             lastFrameTime = -1;
@@ -190,18 +214,18 @@
         
         // Grab the current touch position (or leave it far off-screen if there isn't one)
         int tx = -100, ty = -100;
-        if (_touch_active) {
-            tx = (int)_touch_position.x;
-            ty = (int)_touch_position.y;
+        if (self.touch_active) {
+            tx = (int)self.touch_position.x;
+            ty = (int)self.touch_position.y;
         }
             
-        NSLog(@"Calling reaction_diffusion_2_metal_update size (%u x %u)", buf1.extent[0], buf1.extent[1]);
+        //NSLog(@"Calling reaction_diffusion_2_metal_update size (%u x %u)", buf1.extent[0], buf1.extent[1]);
         reaction_diffusion_2_metal_update((__bridge void *)self, &buf1, tx, ty, cx, cy, iteration++, &buf2);
-        NSLog(@"Returned from reaction_diffusion_2_metal_update");
+        //NSLog(@"Returned from reaction_diffusion_2_metal_update");
 
-        NSLog(@"Calling reaction_diffusion_2_metal_render size (%u x %u)", buf2.extent[0], buf2.extent[1]);
+        //NSLog(@"Calling reaction_diffusion_2_metal_render size (%u x %u)", buf2.extent[0], buf2.extent[1]);
         reaction_diffusion_2_metal_render((__bridge void *)self, &buf2, &pixel_buf);
-        NSLog(@"Returned from reaction_diffusion_2_metal_render");
+        //NSLog(@"Returned from reaction_diffusion_2_metal_render");
 
         buffer_t tmp;
         tmp = buf1; buf1 = buf2; buf2 = tmp;
@@ -216,11 +240,16 @@
         MTLOrigin origin = { 0, 0, 0};
 
         id <MTLBuffer> buffer = (__bridge id <MTLBuffer>)(void *)halide_metal_get_buffer((void *)&self, &pixel_buf);
-        [blitEncoder copyFromBuffer:buffer sourceOffset: 0
+        [blitEncoder 
+            copyFromBuffer:buffer 
+            sourceOffset: 0
             sourceBytesPerRow: pixel_buf.stride[1] * pixel_buf.elem_size
             sourceBytesPerImage: pixel_buf.stride[1] * pixel_buf.extent[1] * pixel_buf.elem_size
-            sourceSize: image_size toTexture: texture
-                   destinationSlice: 0 destinationLevel: 0 destinationOrigin: origin];
+            sourceSize: image_size 
+            toTexture: texture
+            destinationSlice: 0 
+            destinationLevel: 0 
+            destinationOrigin: origin];
         [blitEncoder endEncoding];
         [commandBuffer addCompletedHandler: ^(id MTLCommandBuffer) {
             dispatch_async(dispatch_get_main_queue(), ^(void) {
@@ -233,7 +262,7 @@
 #endif  // HAS_METAL_SDK
 
 - (void)initiateRenderCPU {
-    NSLog(@"initiateRenderCPU");
+    //NSLog(@"initiateRenderCPU");
 
     // Start a background task
 
@@ -246,39 +275,24 @@
         char *log_text_begin = &(log_text[0]);
         
         // Make a frame buffer
-        uint32_t *pixels = (uint32_t *)malloc(4*image_width*image_height);
+        
+        [self initBufsWithWidth:image_width height:image_height];
         
         CGDataProviderRef provider =
-            CGDataProviderCreateWithData(NULL, pixels, image_width * image_height * 4, NULL);
+            CGDataProviderCreateWithData(NULL, pixel_buf.host, image_width * image_height * 4, NULL);
 
         CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
-        
-        // Make a pair of buffers to represent the current state
-        memset(&buf1, 0, sizeof(buf1));
-        buf1.extent[0] = image_width;
-        buf1.extent[1] = image_height;
-        buf1.extent[2] = 3;
-        buf1.stride[0] = 1;
-        buf1.stride[1] = image_width;
-        buf1.stride[2] = image_width * image_height;
-        buf1.elem_size = 4;
-        
-        buf2 = buf1, pixel_buf = buf1;
-        buf1.host = (uint8_t *)malloc(4 * 3 * image_width * image_height);
-        buf2.host = (uint8_t *)malloc(4 * 3 * image_width * image_height);
-        pixel_buf.extent[2] = pixel_buf.stride[2] = 0;
-        pixel_buf.host = (uint8_t *)pixels;
-        
+
         double t_estimate = 0.0;
         
         float cx = image_width / 2;
         float cy = image_height / 2;
         
-        NSLog(@"Calling reaction_diffusion_2_init z"); 
+        //NSLog(@"Calling reaction_diffusion_2_init z"); 
         reaction_diffusion_2_init(cx, cy, &buf1);
-        NSLog(@"Returned from reaction_diffusion_2_init");
+        //NSLog(@"Returned from reaction_diffusion_2_init");
    
-        for (int i = 0; ;i++) {
+        for (int i = 0; ; i++) {
   
             // Grab the current touch position (or leave it far off-screen if there isn't one)
             int tx = -100, ty = -100;
@@ -323,7 +337,7 @@
             
             if (i % 30 == 0) {
                 snprintf(log_text_begin, sizeof(log_text),
-                         "Halide routine takes %0.3f ms\n", t_estimate * 1000);
+                         "Halide routine takes %0.3f ms (CPU) [Double-Tap for Metal]\n", t_estimate * 1000);
             }
             
             // Update UI by dispatching a task to the UI thread
@@ -331,12 +345,21 @@
                 [self.outputLog setText: [NSString stringWithUTF8String:log_text_begin] ];
                 [self setImage:im];
             });
+
+            if (self.use_metal) {
+                NSLog(@"Exiting CPU Render");
+                dispatch_async(dispatch_get_main_queue(), ^(void) {
+                    [self initiateRender];
+                });
+                return;
+            }
+
         }
     });
 }
 
 - (void)initiateRender {
-    NSLog(@"initiateRender");
+    //NSLog(@"initiateRender");
 #if HAS_METAL_SDK
     if (self.use_metal) {
         [self initiateRenderMetal];
@@ -372,8 +395,8 @@
             char *log_text_begin = &(log_text[0]);
 
             snprintf(log_text_begin, sizeof(log_text),
-                     "Halide routine takes %0.3f ms\n", frameElapsedEstimate * 1000);
-            [_outputLog setText: [NSString stringWithUTF8String:log_text_begin]];
+                     "Halide routine takes %0.3f ms (Metal) [Double-Tap for CPU]\n", frameElapsedEstimate * 1000);
+            [self.outputLog setText: [NSString stringWithUTF8String:log_text_begin]];
         }
     }
 

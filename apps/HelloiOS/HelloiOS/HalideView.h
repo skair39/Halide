@@ -25,8 +25,8 @@
 
 @property CGPoint touch_position;
 @property bool touch_active;
-@property bool use_metal;
 @property UITextView *outputLog;
+@property bool use_metal;
 
 #if HAS_METAL_SDK
 // view has a handle to the metal device when created

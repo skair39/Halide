@@ -20,48 +20,41 @@
 
     self.window.rootViewController = halide_view_controller;
         
+    const int kBorderX = 10;
+    const int kBorderY = 40;
+
     // Add a view for image output
     int image_width, image_height;
-    HalideView *output_image = [ HalideView alloc ];
+    HalideView *output_image = [HalideView alloc];
     {
         CGRect box = self.window.frame;
-        box.origin.x += 10;
-        box.origin.y += 30;
-        box.size.width -= 20;
-        box.size.height -= 100;
+        box.origin.x += kBorderX;
+        box.origin.y += kBorderY;
+        box.size.width -= kBorderX*2;
+        box.size.height -= kBorderY*2;
         image_width = box.size.width;
         image_height = box.size.height;
-        output_image = [ output_image initWithFrame:box ];
+        output_image = [output_image initWithFrame:box];
         output_image.backgroundColor = [UIColor blackColor];
-        [ self.window addSubview: output_image ];
-        [ output_image setUserInteractionEnabled:true ];
-        // TODO(srj):
-        // TODO(srj):
-        // TODO(srj):
-        // TODO(srj):
-        // TODO(srj):
-        // TODO(srj):
-        // This should be connected to a button in the UI;
-        // as it is, this means we always use metal when possible,
-        // falling back to CPU when not.
+        [self.window addSubview: output_image];
+        [output_image setUserInteractionEnabled:true];
         output_image.use_metal = true;
     }
     halide_view_controller.halide_view = output_image;
     
+
     // Add a view for text output
-    UITextView *output_log = [ UITextView alloc ];
-    int max_lines;
+    UITextView *output_log = [UITextView alloc];
     {
         CGRect box = self.window.frame;
-        box.origin.x += 10;
-        box.origin.y += image_height + 40;
-        box.size.width -= 20;
-        box.size.height -= image_height + 50;
-        output_log = [ output_log initWithFrame: box ];
+        box.origin.x += kBorderX;
+        box.origin.y += kBorderY + image_height;
+        box.size.width -= box.origin.x + kBorderX;
+        box.size.height -= image_height + kBorderY;
+        output_log = [output_log initWithFrame: box];
         UIFont *font = [UIFont systemFontOfSize:20];
-        [output_log setFont:font ];
-        [ self.window addSubview: output_log ];
-        max_lines = (int)(box.size.height / font.lineHeight) - 2;
+        [output_log setFont:font];
+        [self.window addSubview: output_log];
     }
     output_image.outputLog = output_log;
     
