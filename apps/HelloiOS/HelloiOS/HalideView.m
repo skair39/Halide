@@ -9,6 +9,7 @@
 
 #import "HalideView.h"
 
+#include "HalideBuffer.h"
 #include "HalideRuntime.h"
 #include "HalideRuntimeMetal.h"
 #include "reaction_diffusion_2_init.h"
@@ -20,6 +21,8 @@
 #include "reaction_diffusion_2_metal_update.h"
 #endif
 
+using Halide::Runtime::Buffer;
+
 @implementation HalideView
 {
 @private
@@ -27,9 +30,9 @@
     __weak CAMetalLayer *_metalLayer;
 #endif  // HAS_METAL_SDK
     
-    struct buffer_t buf1;
-    struct buffer_t buf2;
-    struct buffer_t pixel_buf;
+    Buffer<float> buf1;
+    Buffer<float> buf2;
+    Buffer<int32_t> pixel_buf;
     
     int32_t iteration;
     
@@ -63,9 +66,6 @@
     _metalLayer.framebufferOnly = NO;
 #endif  // HAS_METAL_SDK
 
-    memset(&buf1, 0, sizeof(buf1));
-    memset(&buf2, 0, sizeof(buf2));
-    memset(&pixel_buf, 0, sizeof(pixel_buf));
     iteration = 0;
     lastFrameTime = -1;
     frameElapsedEstimate = -1;
@@ -75,46 +75,26 @@
 {
     NSLog(@"InitBufs: %d %d", w, h);
 
-    // Free old buffers if size changes.
-    halide_device_free((void *)&self, &buf1);
-    halide_device_free((void *)&self, &buf2);
-    halide_device_free((void *)&self, &pixel_buf);
-    free(buf1.host);
-    free(buf2.host);
-    free(pixel_buf.host);
-
     // Make a pair of buffers to represent the current state
-    memset(&buf1, 0, sizeof(buf1));
-    buf1.extent[0] = (int32_t)w;
-    buf1.extent[1] = (int32_t)h;
-    buf1.extent[2] = 3;
     if (self.use_metal) {
-#if !HAS_METAL_SDK
-        assert(!"Should not get here");
-#endif
-        buf1.stride[0] = 3;
-        buf1.stride[1] = buf1.extent[0] * buf1.stride[0];
-        buf1.stride[2] = 1;
+        buf1 = Buffer<float>::make_interleaved(w, h, 3);
+        buf2 = Buffer<float>::make_interleaved(w, h, 3);
     } else {
-        buf1.stride[0] = 1;
-        buf1.stride[1] = w;
-        buf1.stride[2] = w * h;
+        buf1 = Buffer<float>(w, h, 3);
+        buf2 = Buffer<float>(w, h, 3);
     }
-    buf1.elem_size = 4;
-    
-    buf2 = buf1;
-    buf1.host = (uint8_t *)malloc(buf1.elem_size * buf1.stride[2] * buf1.extent[2]);
-    buf2.host = (uint8_t *)malloc(buf2.elem_size * buf2.stride[2] * buf2.extent[2]);
 
-    pixel_buf = buf1;
-    pixel_buf.extent[2] = 0;
-    pixel_buf.stride[2] = 0;
-    if (self.use_metal) {
-        // Destination buf must have rows a multiple of 64 bytes for Metal's copyFromBuffer method.
-        pixel_buf.stride[0] = 1;
-        pixel_buf.stride[1] = (pixel_buf.extent[0] + 63) & ~63;
-    }
-    pixel_buf.host = (uint8_t *)malloc(4 * pixel_buf.stride[1] * pixel_buf.extent[1]);
+    // We really only need to pad this for the use_metal case,
+    // but it doesn't really hurt to always do it.
+    const int pad_pixels = (64 / sizeof(int32_t));
+    const int stride = (w + pad_pixels - 1) & ~(pad_pixels - 1);
+    const halide_dimension_t pixelBufShape[] = {
+        {0, w, 1},
+        {0, h, stride}
+    };
+
+    pixel_buf = Buffer<int32_t>(nullptr, 2, pixelBufShape);
+    pixel_buf.allocate();
 }
 
 - (void)didMoveToWindow
@@ -202,9 +182,9 @@
         id <MTLTexture> texture = drawable.texture;
  
         // handle display changes here
-        if (texture.width != buf1.extent[0] ||
-            texture.height != buf1.extent[1] ||
-            buf1.stride[0] != 3) {
+        if (texture.width != buf1.dim(0).extent() ||
+            texture.height != buf1.dim(1).extent() ||
+            buf1.dim(0).stride() != 3) {
  
             // set the metal layer to the drawable size in case orientation or size changes
             CGSize drawableSize = self.bounds.size;
@@ -214,8 +194,7 @@
             _metalLayer.drawableSize = drawableSize;
             
             [self initBufsWithWidth:drawableSize.width height:drawableSize.height];
-
-            reaction_diffusion_2_metal_init((__bridge void *)self, &buf1);
+            reaction_diffusion_2_metal_init((__bridge void *)self, buf1);
             
             iteration = 0;
             lastFrameTime = -1;
@@ -229,27 +208,26 @@
             ty = (int)self.touch_position.y;
         }
             
-        reaction_diffusion_2_metal_update((__bridge void *)self, &buf1, tx, ty, iteration++, &buf2);
-        reaction_diffusion_2_metal_render((__bridge void *)self, &buf2, &pixel_buf);
+        reaction_diffusion_2_metal_update((__bridge void *)self, buf1, tx, ty, iteration++, buf2);
+        reaction_diffusion_2_metal_render((__bridge void *)self, buf2, pixel_buf);
 
-        buffer_t tmp;
-        tmp = buf1; buf1 = buf2; buf2 = tmp;
+        std::swap(buf1, buf2);
 
         id <MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
         id <MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
 
         MTLSize image_size;
-        image_size.width = pixel_buf.extent[0];
-        image_size.height = pixel_buf.extent[1];
+        image_size.width = pixel_buf.dim(0).extent();
+        image_size.height = pixel_buf.dim(1).extent();
         image_size.depth = 1;
         MTLOrigin origin = { 0, 0, 0 };
 
-        id <MTLBuffer> buffer = (__bridge id <MTLBuffer>)(void *)halide_metal_get_buffer((void *)&self, &pixel_buf);
+        id <MTLBuffer> buffer = (__bridge id <MTLBuffer>)(void *)halide_metal_get_buffer((void *)&self, pixel_buf);
         [blitEncoder 
             copyFromBuffer:buffer 
             sourceOffset: 0
-            sourceBytesPerRow: pixel_buf.stride[1] * pixel_buf.elem_size
-            sourceBytesPerImage: pixel_buf.stride[1] * pixel_buf.extent[1] * pixel_buf.elem_size
+            sourceBytesPerRow: pixel_buf.dim(1).stride() * pixel_buf.type().bits / 8
+            sourceBytesPerImage: pixel_buf.size_in_bytes()
             sourceSize: image_size 
             toTexture: texture
             destinationSlice: 0 
@@ -308,13 +286,13 @@
         [self initBufsWithWidth:image_width height:image_height];
 
         CGDataProviderRef provider =
-            CGDataProviderCreateWithData(NULL, pixel_buf.host, image_width * image_height * 4, NULL);
+            CGDataProviderCreateWithData(NULL, pixel_buf.data(), image_width * image_height * 4, NULL);
 
         CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
 
         double t_estimate = 0.0;
         
-        reaction_diffusion_2_init(&buf1);
+        reaction_diffusion_2_init(buf1);
    
         for (int i = 0; ; i++) {
   
@@ -326,14 +304,14 @@
             }
             
             double t_before_update = CACurrentMediaTime();
-            reaction_diffusion_2_update(&buf1, tx, ty, i, &buf2);
+            reaction_diffusion_2_update(buf1, tx, ty, i, buf2);
             double t_after_update = CACurrentMediaTime();
           
             double t_before_render = CACurrentMediaTime();
-            reaction_diffusion_2_render(&buf2, &pixel_buf);
+            reaction_diffusion_2_render(buf2, pixel_buf);
             double t_after_render = CACurrentMediaTime();
 
-            halide_copy_to_host(NULL, &pixel_buf);
+            pixel_buf.copy_to_host();
             
             double t_elapsed = (t_after_update - t_before_update) + (t_after_render - t_before_render);
             
@@ -350,8 +328,7 @@
             UIImage *im = [UIImage imageWithCGImage:image_ref];
             CGImageRelease(image_ref);
 
-            buffer_t tmp;
-            tmp = buf1; buf1 = buf2; buf2 = tmp;
+            std::swap(buf1, buf2);
             
             if (!self.use_metal) {
                 if (i % 30 == 0) {
