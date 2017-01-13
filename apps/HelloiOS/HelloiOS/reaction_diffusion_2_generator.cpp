@@ -84,7 +84,9 @@ public:
         G = clamp(G, 0.0f, 1.0f);
         B = clamp(B, 0.0f, 1.0f);
 
-        new_state(x, y, c) = select(c == 0, R, select(c == 1, G, B));
+        new_state(x, y, c) = select(c == 0, R, 
+                                    c == 1, G, 
+                                            B);
 
         // Noise at the edges
         new_state(x, state.dim(1).min(), c) = random_float(frame)*0.2f;
@@ -102,7 +104,9 @@ public:
         Expr dx = clobber.x - mouse_x;
         Expr dy = clobber.y - mouse_y;
         Expr radius = dx * dx + dy * dy;
-        new_state(clobber.x, clobber.y, c) = select(radius < 400.0f, 1.0f, new_state(clobber.x, clobber.y, c));
+        new_state(clobber.x, clobber.y, c) = select(radius < 400.0f, 
+                                                    1.0f, 
+                                                    new_state(clobber.x, clobber.y, c));
     }
 
     void schedule() {
@@ -148,11 +152,11 @@ public:
             Func(new_state)
                 .split(y, y, yi, 64)
                 .parallel(y)
-                .vectorize(x, 4);
+                .vectorize(x, natural_vector_size<float>());
 
             blur
                 .compute_at(new_state, yi)
-                .vectorize(x, 4);
+                .vectorize(x, natural_vector_size<float>());
 
             clamped
                 .store_at(new_state, y)
@@ -207,7 +211,7 @@ public:
         } else {
             Var yi;
             Func(render)
-                .vectorize(x, 4)
+                .vectorize(x, natural_vector_size<int32_t>())
                 .split(y, y, yi, 64)
                 .parallel(y);
         }
