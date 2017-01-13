@@ -49,7 +49,7 @@
 {
     self.opaque          = YES;
     self.backgroundColor = nil;
-    
+
 #if HAS_METAL_SDK
     _metalLayer = (CAMetalLayer *)self.layer;
     _metalLayer.delegate = self;
@@ -191,13 +191,14 @@
 
 #if HAS_METAL_SDK
 - (void)initiateRenderMetal {
-    //NSLog(@"initiateRenderMetal");
+    // NSLog(@"initiateRenderMetal");
+    assert(self.use_metal);
+
     // Create autorelease pool per frame to avoid possible deadlock situations
     // because there are 3 CAMetalDrawables sitting in an autorelease pool.
     @autoreleasepool
     {
         id <CAMetalDrawable> drawable = [_metalLayer nextDrawable];
-        
         id <MTLTexture> texture = drawable.texture;
  
         // handle display changes here
@@ -207,17 +208,14 @@
  
             // set the metal layer to the drawable size in case orientation or size changes
             CGSize drawableSize = self.bounds.size;
-
+            // Metal schedule requires that the image be exact multiples of 8 in x & y
             drawableSize.width  = ((long)drawableSize.width + 7) & ~7;
             drawableSize.height  = ((long)drawableSize.height + 7) & ~7;
-
             _metalLayer.drawableSize = drawableSize;
             
             [self initBufsWithWidth:drawableSize.width height:drawableSize.height];
 
-            //NSLog(@"Calling reaction_diffusion_2_metal_init size (%u x %u)", buf1.extent[0], buf1.extent[1]);
             reaction_diffusion_2_metal_init((__bridge void *)self, &buf1);
-            //NSLog(@"Returned from reaction_diffusion_2_metal_init");
             
             iteration = 0;
             lastFrameTime = -1;
@@ -231,13 +229,8 @@
             ty = (int)self.touch_position.y;
         }
             
-        //NSLog(@"Calling reaction_diffusion_2_metal_update size (%u x %u)", buf1.extent[0], buf1.extent[1]);
         reaction_diffusion_2_metal_update((__bridge void *)self, &buf1, tx, ty, iteration++, &buf2);
-        //NSLog(@"Returned from reaction_diffusion_2_metal_update");
-
-        //NSLog(@"Calling reaction_diffusion_2_metal_render size (%u x %u)", buf2.extent[0], buf2.extent[1]);
         reaction_diffusion_2_metal_render((__bridge void *)self, &buf2, &pixel_buf);
-        //NSLog(@"Returned from reaction_diffusion_2_metal_render");
 
         buffer_t tmp;
         tmp = buf1; buf1 = buf2; buf2 = tmp;
@@ -266,7 +259,8 @@
         [commandBuffer addCompletedHandler: ^(id MTLCommandBuffer) {
             dispatch_async(dispatch_get_main_queue(), ^(void) {
                 [self displayRenderMetal:drawable];
-            });}];
+            });
+        }];
         [commandBuffer commit];
         [_commandQueue insertDebugCaptureBoundary];
     }
@@ -281,43 +275,38 @@
         lastFrameTime = frameTime;
     } else {
         double t_elapsed = (frameTime - lastFrameTime) + (frameTime - lastFrameTime);
-    
         lastFrameTime = frameTime;
-
+        lastFrameTime = frameTime;
         // Smooth elapsed using an IIR
         if (frameElapsedEstimate == -1) {
             frameElapsedEstimate = t_elapsed;
         } else {
             frameElapsedEstimate = (frameElapsedEstimate * 31 + t_elapsed) / 32.0;
         }
-
         if ((iteration % 30) == 0) {
             [self updateLogWith: frameElapsedEstimate];
         }
     }
-
     [self initiateRender];
 }
 
 #endif  // HAS_METAL_SDK
 
 - (void)initiateRenderCPU {
-    //NSLog(@"initiateRenderCPU");
+    // NSLog(@"initiateRenderCPU");
 
     // Start a background task
+    assert(!self.use_metal);
 
     CGRect box = self.window.frame;
     int image_width = box.size.width;
     int image_height = box.size.height;
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        char log_text[2048];
-        char *log_text_begin = &(log_text[0]);
-        
         // Make a frame buffer
         
         [self initBufsWithWidth:image_width height:image_height];
-        
+
         CGDataProviderRef provider =
             CGDataProviderCreateWithData(NULL, pixel_buf.host, image_width * image_height * 4, NULL);
 
@@ -325,9 +314,7 @@
 
         double t_estimate = 0.0;
         
-        //NSLog(@"Calling reaction_diffusion_2_init z"); 
         reaction_diffusion_2_init(&buf1);
-        //NSLog(@"Returned from reaction_diffusion_2_init");
    
         for (int i = 0; ; i++) {
   
@@ -338,17 +325,13 @@
                 ty = (int)self.touch_position.y;
             }
             
-            //NSLog(@"Calling reaction_diffusion_2_update");
             double t_before_update = CACurrentMediaTime();
             reaction_diffusion_2_update(&buf1, tx, ty, i, &buf2);
             double t_after_update = CACurrentMediaTime();
-            //NSLog(@"Returned from reaction_diffusion_2_update");
           
-            //NSLog(@"Calling reaction_diffusion_2_render");
             double t_before_render = CACurrentMediaTime();
             reaction_diffusion_2_render(&buf2, &pixel_buf);
             double t_after_render = CACurrentMediaTime();
-            //NSLog(@"Returned from reaction_diffusion_2_render");
 
             halide_copy_to_host(NULL, &pixel_buf);
             
@@ -364,9 +347,7 @@
                               kCGBitmapByteOrderDefault,
                               provider, NULL, NO,
                               kCGRenderingIntentDefault);
-            
             UIImage *im = [UIImage imageWithCGImage:image_ref];
-            
             CGImageRelease(image_ref);
 
             buffer_t tmp;
@@ -394,7 +375,7 @@
 }
 
 - (void)initiateRender {
-    //NSLog(@"initiateRender");
+    // NSLog(@"initiateRender");
 #if HAS_METAL_SDK
     if (self.use_metal) {
         [self initiateRenderMetal];
