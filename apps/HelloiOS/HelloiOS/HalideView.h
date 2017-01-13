@@ -37,8 +37,4 @@
 
 - (void)initiateRender;
 
-#if HAS_METAL_SDK
-- (void)displayRender:(id <MTLDrawable>)drawable;
-#endif  // HAS_METAL_SDK
-
 @end
