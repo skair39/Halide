@@ -173,7 +173,7 @@ HALIDE_REGISTER_GENERATOR(ReactionDiffusion2Update, "reaction_diffusion_2_update
 class ReactionDiffusion2Render : public Halide::Generator<ReactionDiffusion2Render> {
 public:
     Input<Buffer<float>> state{"state", 3};
-    Output<Buffer<int32_t>> render{"render", 2};
+    Output<Buffer<uint8_t>> render{"render", 3};
 
     void generate() {
         Func contour;
@@ -186,19 +186,20 @@ public:
         Expr B = max(c0, max(c1, c2));
 
         // TODO: ugly hack to rearrange output
-        const int32_t kRFactor = get_target().has_gpu_feature() ? (1 << 16) : (1 << 0);
-        const int32_t kGFactor = get_target().has_gpu_feature() ? (1 << 8) : (1 << 8);
-        const int32_t kBFactor = get_target().has_gpu_feature() ? (1 << 0) : (1 << 16);
+        const int kR = get_target().has_gpu_feature() ? 2 : 0;
+        const int kG = get_target().has_gpu_feature() ? 1 : 1;
+        const int kB = get_target().has_gpu_feature() ? 0 : 2;
 
-        Expr alpha = cast<int32_t>(255 << 24);
-        Expr red = cast<int32_t>(R * 255) * kRFactor;
-        Expr green = cast<int32_t>(G * 255) * kGFactor;
-        Expr blue = cast<int32_t>(B * 255) * kBFactor;
-
-        render(x, y) = cast<int32_t>(alpha + red + green + blue);
+        render(x, y, c) = select(c == kR, cast<uint8_t>(R * 255), 
+                                 c == kG, cast<uint8_t>(G * 255), 
+                                 c == kB, cast<uint8_t>(B * 255),
+                                          cast<uint8_t>(255));
     }
 
     void schedule() {
+        render
+            .dim(0).set_stride(4)
+            .dim(2).set_stride(1).set_bounds(0, 4);
         if (get_target().has_gpu_feature()) {
             state
                 .dim(0).set_stride(3)
@@ -208,7 +209,7 @@ public:
         } else {
             Var yi;
             Func(render)
-                .vectorize(x, natural_vector_size<int32_t>())
+                .vectorize(x, natural_vector_size<uint8_t>())
                 .split(y, y, yi, 64)
                 .parallel(y);
         }

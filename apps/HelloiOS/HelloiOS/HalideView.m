@@ -32,7 +32,7 @@ using Halide::Runtime::Buffer;
     
     Buffer<float> buf1;
     Buffer<float> buf2;
-    Buffer<int32_t> pixel_buf;
+    Buffer<uint8_t> pixel_buf;
     
     int32_t iteration;
     
@@ -86,14 +86,18 @@ using Halide::Runtime::Buffer;
 
     // We really only need to pad this for the use_metal case,
     // but it doesn't really hurt to always do it.
+    const int c = 4;
     const int pad_pixels = (64 / sizeof(int32_t));
-    const int stride = (w + pad_pixels - 1) & ~(pad_pixels - 1);
+    const int row_stride = (w + pad_pixels - 1) & ~(pad_pixels - 1);
     const halide_dimension_t pixelBufShape[] = {
-        {0, w, 1},
-        {0, h, stride}
+        {0, w, c},
+        {0, h, c * row_stride},
+        {0, c, 1}
     };
 
-    pixel_buf = Buffer<int32_t>(nullptr, 2, pixelBufShape);
+    // This allows us to make a Buffer with an arbitrary shape
+    // and memory managed by Buffer itself
+    pixel_buf = Buffer<uint8_t>(nullptr, 3, pixelBufShape);
     pixel_buf.allocate();
 }
 
@@ -286,7 +290,7 @@ using Halide::Runtime::Buffer;
         [self initBufsWithWidth:image_width height:image_height];
 
         CGDataProviderRef provider =
-            CGDataProviderCreateWithData(NULL, pixel_buf.data(), image_width * image_height * 4, NULL);
+            CGDataProviderCreateWithData(NULL, pixel_buf.data(), pixel_buf.size_in_bytes(), NULL);
 
         CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
 
@@ -303,24 +307,25 @@ using Halide::Runtime::Buffer;
                 ty = (int)self.touch_position.y;
             }
             
-            double t_before_update = CACurrentMediaTime();
+            double t_before = CACurrentMediaTime();
             reaction_diffusion_2_update(buf1, tx, ty, i, buf2);
-            double t_after_update = CACurrentMediaTime();
-          
-            double t_before_render = CACurrentMediaTime();
             reaction_diffusion_2_render(buf2, pixel_buf);
-            double t_after_render = CACurrentMediaTime();
+            double t_after = CACurrentMediaTime();
 
             pixel_buf.copy_to_host();
             
-            double t_elapsed = (t_after_update - t_before_update) + (t_after_render - t_before_render);
+            double t_elapsed = (t_after - t_before);
             
             // Smooth elapsed using an IIR
             if (i == 0) t_estimate = t_elapsed;
             else t_estimate = (t_estimate * 31 + t_elapsed) / 32.0;
             
+            const int bytesPerRow = pixel_buf.dim(1).stride() * pixel_buf.type().bits / 8;
             CGImageRef image_ref =
-                CGImageCreate(image_width, image_height, 8, 32, 4*image_width,
+                CGImageCreate(image_width, image_height, 
+                              8,   // bitsPerComponent
+                              32,  // bitsPerPixel
+                              bytesPerRow,
                               color_space,
                               kCGBitmapByteOrderDefault,
                               provider, NULL, NO,
