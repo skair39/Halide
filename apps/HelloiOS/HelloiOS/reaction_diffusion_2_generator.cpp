@@ -2,7 +2,6 @@
 
 namespace {
 
-// TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Init : public Halide::Generator<ReactionDiffusion2Init> {
 public:
     Output<Buffer<float>> output{"output", 3};
@@ -30,7 +29,6 @@ private:
 
 HALIDE_REGISTER_GENERATOR(ReactionDiffusion2Init, "reaction_diffusion_2_init")
 
-// TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Update : public Halide::Generator<ReactionDiffusion2Update> {
 public:
     Input<Buffer<float>> state{"state", 3};
@@ -172,7 +170,6 @@ private:
 
 HALIDE_REGISTER_GENERATOR(ReactionDiffusion2Update, "reaction_diffusion_2_update")
 
-// TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Render : public Halide::Generator<ReactionDiffusion2Render> {
 public:
     Input<Buffer<float>> state{"state", 3};
