@@ -89,10 +89,12 @@
     buf1.extent[1] = (int32_t)h;
     buf1.extent[2] = 3;
     if (self.use_metal) {
+#if !HAS_METAL_SDK
+        assert(!"Should not get here");
+#endif
         buf1.stride[0] = 3;
         buf1.stride[1] = buf1.extent[0] * buf1.stride[0];
         buf1.stride[2] = 1;
-        buf1.elem_size = sizeof(float);
     } else {
         buf1.stride[0] = 1;
         buf1.stride[1] = w;
@@ -101,8 +103,8 @@
     buf1.elem_size = 4;
     
     buf2 = buf1;
-    buf1.host = (uint8_t *)malloc(4 * 3 * w * h);
-    buf2.host = (uint8_t *)malloc(4 * 3 * w * h);
+    buf1.host = (uint8_t *)malloc(buf1.elem_size * buf1.stride[2] * buf1.extent[2]);
+    buf2.host = (uint8_t *)malloc(buf2.elem_size * buf2.stride[2] * buf2.extent[2]);
 
     pixel_buf = buf1;
     pixel_buf.extent[2] = 0;
@@ -110,8 +112,7 @@
     if (self.use_metal) {
         // Destination buf must have rows a multiple of 64 bytes for Metal's copyFromBuffer method.
         pixel_buf.stride[0] = 1;
-        pixel_buf.stride[1] = (pixel_buf.extent[1] + 63) & ~63;
-        pixel_buf.host = (uint8_t *)malloc(4 * w * h);
+        pixel_buf.stride[1] = (pixel_buf.extent[0] + 63) & ~63;
     }
     pixel_buf.host = (uint8_t *)malloc(4 * pixel_buf.stride[1] * pixel_buf.extent[1]);
 }
@@ -147,15 +148,32 @@
     [super setContentScaleFactor:contentScaleFactor];
 }
 
+- (void)updateLogWith: (double) elapsedTime
+{
+#if HAS_METAL_SDK
+    const char* mode = self.use_metal ? "Metal" : "CPU";
+    const char* other = !self.use_metal ? "Metal" : "CPU";
+#else
+    const char* mode = "CPU";
+    const char* other = "CPU";
+#endif
+    char log_text[2048];
+    snprintf(log_text, sizeof(log_text),
+         "Halide routine takes %0.3f ms (%s) [Double-tap for %s]\n", elapsedTime * 1000, mode, other);
+    [self.outputLog setText: [NSString stringWithUTF8String:log_text]];
+}
+
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event {
     UITouch* touch = [touches anyObject];
     self.touch_position = [touch locationInView:self];
     self.touch_active = [self pointInside:self.touch_position withEvent:event];
+#if HAS_METAL_SDK
     NSUInteger numTaps = [touch tapCount];
     if (numTaps > 1) {
         self.use_metal = !self.use_metal;
     }
     NSLog(@"TBTaps: %d, self.use_metal %d", (int)numTaps, (int)self.use_metal);
+#endif
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
@@ -231,7 +249,7 @@
         image_size.width = pixel_buf.extent[0];
         image_size.height = pixel_buf.extent[1];
         image_size.depth = 1;
-        MTLOrigin origin = { 0, 0, 0};
+        MTLOrigin origin = { 0, 0, 0 };
 
         id <MTLBuffer> buffer = (__bridge id <MTLBuffer>)(void *)halide_metal_get_buffer((void *)&self, &pixel_buf);
         [blitEncoder 
@@ -247,12 +265,40 @@
         [blitEncoder endEncoding];
         [commandBuffer addCompletedHandler: ^(id MTLCommandBuffer) {
             dispatch_async(dispatch_get_main_queue(), ^(void) {
-                [self displayRender:drawable];
+                [self displayRenderMetal:drawable];
             });}];
         [commandBuffer commit];
         [_commandQueue insertDebugCaptureBoundary];
     }
 }
+
+- (void)displayRenderMetal:(id <MTLDrawable>)drawable
+{
+    [drawable present];
+    double frameTime = CACurrentMediaTime();
+    
+    if (lastFrameTime == -1) {
+        lastFrameTime = frameTime;
+    } else {
+        double t_elapsed = (frameTime - lastFrameTime) + (frameTime - lastFrameTime);
+    
+        lastFrameTime = frameTime;
+
+        // Smooth elapsed using an IIR
+        if (frameElapsedEstimate == -1) {
+            frameElapsedEstimate = t_elapsed;
+        } else {
+            frameElapsedEstimate = (frameElapsedEstimate * 31 + t_elapsed) / 32.0;
+        }
+
+        if ((iteration % 30) == 0) {
+            [self updateLogWith: frameElapsedEstimate];
+        }
+    }
+
+    [self initiateRender];
+}
+
 #endif  // HAS_METAL_SDK
 
 - (void)initiateRenderCPU {
@@ -326,18 +372,16 @@
             buffer_t tmp;
             tmp = buf1; buf1 = buf2; buf2 = tmp;
             
-            if (i % 30 == 0) {
-                snprintf(log_text_begin, sizeof(log_text),
-                         "Halide routine takes %0.3f ms (CPU) [Double-Tap for Metal]\n", t_estimate * 1000);
-            }
-            
-            // Update UI by dispatching a task to the UI thread
-            dispatch_async(dispatch_get_main_queue(), ^(void) {
-                [self.outputLog setText: [NSString stringWithUTF8String:log_text_begin] ];
-                [self setImage:im];
-            });
-
-            if (self.use_metal) {
+            if (!self.use_metal) {
+                if (i % 30 == 0) {
+                    dispatch_async(dispatch_get_main_queue(), ^(void) {
+                       [self updateLogWith: t_estimate];
+                    });
+                }
+                dispatch_async(dispatch_get_main_queue(), ^(void) {
+                    [self setImage:im];
+                });
+            } else {
                 NSLog(@"Exiting CPU Render");
                 dispatch_async(dispatch_get_main_queue(), ^(void) {
                     [self initiateRender];
@@ -360,41 +404,6 @@
 
     [self initiateRenderCPU];
 }
-
-#if HAS_METAL_SDK
-- (void)displayRender:(id <MTLDrawable>)drawable
-{
-    [drawable present];
-    double frameTime = CACurrentMediaTime();
-    
-    if (lastFrameTime == -1) {
-        lastFrameTime = frameTime;
-    } else {
-        double t_elapsed = (frameTime - lastFrameTime) + (frameTime - lastFrameTime);
-    
-        lastFrameTime = frameTime;
-
-        // Smooth elapsed using an IIR
-        if (frameElapsedEstimate == -1) {
-            frameElapsedEstimate = t_elapsed;
-        } else {
-            frameElapsedEstimate = (frameElapsedEstimate * 31 + t_elapsed) / 32.0;
-        }
-
-        if ((iteration % 30) == 0) {
-            char log_text[2048];
-            char *log_text_begin = &(log_text[0]);
-
-            snprintf(log_text_begin, sizeof(log_text),
-                     "Halide routine takes %0.3f ms (Metal) [Double-Tap for CPU]\n", frameElapsedEstimate * 1000);
-            [self.outputLog setText: [NSString stringWithUTF8String:log_text_begin]];
-        }
-    }
-
-    [self initiateRender];
-}
-
-#endif  // HAS_METAL_SDK
 
 @end
 
