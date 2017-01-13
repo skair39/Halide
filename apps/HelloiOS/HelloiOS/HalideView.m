@@ -182,9 +182,6 @@
         
         id <MTLTexture> texture = drawable.texture;
  
-        float cx = 0.f;
-        float cy = 0.f;
-
         // handle display changes here
         if (texture.width != buf1.extent[0] ||
             texture.height != buf1.extent[1] ||
@@ -200,11 +197,8 @@
             
             [self initBufsWithWidth:drawableSize.width height:drawableSize.height];
 
-            cx = drawableSize.width / 2;
-            cy = drawableSize.height / 2;
-            
             //NSLog(@"Calling reaction_diffusion_2_metal_init size (%u x %u)", buf1.extent[0], buf1.extent[1]);
-            reaction_diffusion_2_metal_init((__bridge void *)self, cx, cy, &buf1);
+            reaction_diffusion_2_metal_init((__bridge void *)self, &buf1);
             //NSLog(@"Returned from reaction_diffusion_2_metal_init");
             
             iteration = 0;
@@ -220,7 +214,7 @@
         }
             
         //NSLog(@"Calling reaction_diffusion_2_metal_update size (%u x %u)", buf1.extent[0], buf1.extent[1]);
-        reaction_diffusion_2_metal_update((__bridge void *)self, &buf1, tx, ty, cx, cy, iteration++, &buf2);
+        reaction_diffusion_2_metal_update((__bridge void *)self, &buf1, tx, ty, iteration++, &buf2);
         //NSLog(@"Returned from reaction_diffusion_2_metal_update");
 
         //NSLog(@"Calling reaction_diffusion_2_metal_render size (%u x %u)", buf2.extent[0], buf2.extent[1]);
@@ -285,11 +279,8 @@
 
         double t_estimate = 0.0;
         
-        float cx = image_width / 2;
-        float cy = image_height / 2;
-        
         //NSLog(@"Calling reaction_diffusion_2_init z"); 
-        reaction_diffusion_2_init(cx, cy, &buf1);
+        reaction_diffusion_2_init(&buf1);
         //NSLog(@"Returned from reaction_diffusion_2_init");
    
         for (int i = 0; ; i++) {
@@ -303,7 +294,7 @@
             
             //NSLog(@"Calling reaction_diffusion_2_update");
             double t_before_update = CACurrentMediaTime();
-            reaction_diffusion_2_update(&buf1, tx, ty, cx, cy, i, &buf2);
+            reaction_diffusion_2_update(&buf1, tx, ty, i, &buf2);
             double t_after_update = CACurrentMediaTime();
             //NSLog(@"Returned from reaction_diffusion_2_update");
           

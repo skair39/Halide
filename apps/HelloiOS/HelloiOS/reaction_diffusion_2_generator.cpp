@@ -5,8 +5,6 @@ namespace {
 // TODO: convert to new-style once Input<Buffer> added
 class ReactionDiffusion2Init : public Halide::Generator<ReactionDiffusion2Init> {
 public:
-    Input<float> cx{"cx"};
-    Input<float> cy{"cy"};
     Output<Buffer<float>> output{"output", 3};
 
     void generate() {
@@ -38,8 +36,6 @@ public:
     Input<Buffer<float>> state{"state", 3};
     Input<int> mouse_x{"mouse_x"};
     Input<int> mouse_y{"mouse_y"};
-    Input<float> cx{"cx"};
-    Input<float> cy{"cy"};
     Input<int> frame{"frame"};
     Output<Buffer<float>> new_state{"new_state", 3};
 
