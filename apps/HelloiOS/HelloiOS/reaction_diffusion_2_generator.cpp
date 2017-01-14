@@ -185,15 +185,10 @@ public:
         Expr G = (c0 + c1 + c2)/3;
         Expr B = max(c0, max(c1, c2));
 
-        // TODO: ugly hack to rearrange output
-        const int kR = get_target().has_gpu_feature() ? 2 : 0;
-        const int kG = get_target().has_gpu_feature() ? 1 : 1;
-        const int kB = get_target().has_gpu_feature() ? 0 : 2;
-
-        render(x, y, c) = select(c == kR, cast<uint8_t>(R * 255), 
-                                 c == kG, cast<uint8_t>(G * 255), 
-                                 c == kB, cast<uint8_t>(B * 255),
-                                          cast<uint8_t>(255));
+        render(x, y, c) = select(c == 2, cast<uint8_t>(R * 255), 
+                                 c == 1, cast<uint8_t>(G * 255), 
+                                 c == 0, cast<uint8_t>(B * 255),
+                                         cast<uint8_t>(255));
     }
 
     void schedule() {

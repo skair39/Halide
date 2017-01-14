@@ -21,14 +21,18 @@
 #import <Metal/Metal.h>
 #endif  // HAS_METAL_SDK
 
+#if HAS_METAL_SDK
+@interface HalideView : UIView
+#else
 @interface HalideView : UIImageView
+#endif
 
 @property CGPoint touch_position;
 @property bool touch_active;
 @property UITextView *outputLog;
-@property bool use_metal;
 
 #if HAS_METAL_SDK
+@property bool use_metal;
 // view has a handle to the metal device when created
 @property (nonatomic, readonly) id <MTLDevice> device;
 // view has a handle to the metal device when created

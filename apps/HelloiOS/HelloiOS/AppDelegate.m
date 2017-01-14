@@ -38,7 +38,9 @@
         output_image.backgroundColor = [UIColor blackColor];
         [self.window addSubview: output_image];
         [output_image setUserInteractionEnabled:true];
-        output_image.use_metal = false;
+#if HAS_METAL_SDK
+        output_image.use_metal = true;
+#endif
     }
     halide_view_controller.halide_view = output_image;
     
